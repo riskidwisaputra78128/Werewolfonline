@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>Werewolf Online — Desa 3D</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Nunito+Sans:wght@400;600;700;800&display=swap" rel="stylesheet" />
+<style>
+/*
+VOICE: desa malam yang mencekam tapi ramah dimainkan bareng teman
+IDEA: papan permainan di atas meja api unggun — UI adalah kaca gelap yang melayang
+PICTURE: desa 3D penuh layar; panel kaca biru-malam
+COLOUR and TYPE: biru malam #0b1220, aksen sian #38bdf8, hijau aksi #22c55e, merah serigala #ef4444, ungu moderator #8b5cf6; Cinzel + Nunito Sans
+LAYOUT: chip status kiri atas, tombol kanan atas, dock aksi bawah tengah, panel samping kanan
+*/
+:root{--glass:rgba(10,16,30,.86);--glass2:rgba(17,26,46,.92);--line:rgba(148,180,230,.18);--ink:#e8eef8;--dim:#93a3bd;--cyan:#38bdf8;--green:#22c55e;--red:#ef4444;--amber:#f5b942;--violet:#8b5cf6}
+*{box-sizing:border-box;min-width:0}
+html,body{margin:0;height:100%;overflow:hidden;background:#05070d;color:var(--ink);font:15px/1.45 "Nunito Sans",system-ui,sans-serif;-webkit-tap-highlight-color:transparent}
+canvas#scene{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
+#labels{position:fixed;inset:0;pointer-events:none;overflow:hidden}
+.plabel{position:absolute;left:0;top:0;display:grid;justify-items:center;gap:4px;will-change:transform}
+.pname{background:rgba(8,12,24,.78);border:1px solid color-mix(in srgb,var(--c) 70%,transparent);border-bottom:3px solid var(--c);padding:3px 9px;border-radius:7px;font-weight:800;font-size:13px;white-space:nowrap;display:flex;gap:5px;align-items:center}
+.pname.you{box-shadow:0 0 0 2px var(--cyan)}
+.pname.dead{opacity:.55;text-decoration:line-through}
+.pname .badge{background:var(--amber);color:#1a1205;border-radius:9px;padding:0 6px;font-size:12px}
+.pname .off{color:var(--amber)}
+.bubble{background:#fff;color:#111;border-radius:10px;padding:5px 10px;font-size:13px;font-weight:600;max-width:220px;white-space:normal;text-align:center;position:relative;animation:pop .2s}
+.bubble:after{content:"";position:absolute;left:50%;bottom:-6px;margin-left:-6px;border:6px solid transparent;border-top-color:#fff;border-bottom:0}
+@keyframes pop{from{transform:scale(.7);opacity:0}}
+.hidden{display:none!important}
+body:not(.static) .static-only{display:none}
+button{font:800 14px "Nunito Sans",sans-serif;color:var(--ink);background:rgba(148,180,230,.1);border:1px solid var(--line);border-radius:10px;padding:10px 14px;min-height:44px;cursor:pointer;transition:background .15s,transform .1s,border-color .15s;white-space:nowrap}
+button:hover{background:rgba(148,180,230,.2)}button:active{transform:scale(.97)}
+button:disabled{opacity:.45;cursor:not-allowed}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+.b-cyan{background:linear-gradient(180deg,#38bdf8,#0284c7);border-color:#7dd3fc;color:#04121f}
+.b-green{background:linear-gradient(180deg,#34d399,#16a34a);border-color:#86efac;color:#03170b}
+.b-red{background:linear-gradient(180deg,#f87171,#dc2626);border-color:#fca5a5;color:#1f0303}
+.b-violet{background:linear-gradient(180deg,#a78bfa,#7c3aed);border-color:#c4b5fd;color:#0f0624}
+input,select{font:16px "Nunito Sans",sans-serif;color:var(--ink);background:rgba(2,6,16,.7);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-height:44px;width:100%}
+input[type=checkbox]{width:22px;height:22px;min-height:0;accent-color:var(--cyan);flex:none}
+label.ck{display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:700}
+.card{background:var(--glass);border:1px solid var(--line);border-radius:16px;padding:20px;backdrop-filter:blur(10px);box-shadow:0 20px 60px rgba(0,0,0,.45)}
+h1,h2,.cinzel{font-family:Cinzel,serif}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.row>.grow{flex:1}
+.muted{color:var(--dim)}
+.msg{min-height:20px;color:var(--amber);font-size:14px}
+
+/* ---------- lobby ---------- */
+#lobby{position:fixed;inset:0;display:grid;place-items:center;padding:14px;background:radial-gradient(ellipse at center,rgba(4,8,16,.25),rgba(4,8,16,.8));overflow:auto}
+#lobby .card{width:min(560px,100%);display:grid;gap:12px}
+#lobby h1{margin:0;font-size:clamp(28px,6vw,40px);line-height:1.05;color:#dbe7ff}
+#lobby h1 small{display:block;font-family:"Nunito Sans";font-size:15px;color:var(--dim);font-weight:600;margin-top:6px}
+.status{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--dim)}
+.dot{width:9px;height:9px;border-radius:50%;background:#64748b}.dot.on{background:var(--green);box-shadow:0 0 8px var(--green)}.dot.err{background:var(--red)}
+.rooms{display:grid;gap:8px;max-height:230px;overflow:auto}
+.room{display:flex;gap:10px;align-items:center;background:rgba(2,6,16,.55);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.room .info{flex:1}.room b{font-size:15px}.room small{display:block;color:var(--dim)}
+.tag{display:inline-block;font-size:11.5px;font-weight:800;border-radius:6px;padding:1px 7px;background:rgba(34,197,94,.18);color:#86efac}
+.tag.play{background:rgba(245,185,66,.18);color:var(--amber)}
+.empty{color:var(--dim);font-size:14px;padding:10px 0}
+hr{border:0;border-top:1px solid var(--line);margin:2px 0}
+
+/* ---------- HUD ---------- */
+#hud{position:fixed;inset:0;pointer-events:none}
+#hud>*{pointer-events:auto}
+.top{position:absolute;left:12px;right:12px;top:12px;display:flex;justify-content:space-between;gap:10px;align-items:flex-start;pointer-events:none}
+.top>*{pointer-events:auto}
+.chips,.tools{display:flex;gap:8px;flex-wrap:wrap}
+.tools{justify-content:flex-end}
+.chip{background:var(--glass);border:1px solid var(--line);border-radius:999px;padding:8px 14px;font-weight:800;font-size:13.5px;white-space:nowrap;display:flex;gap:6px;align-items:center;min-height:40px}
+.chip.role{border-color:rgba(139,92,246,.6);cursor:pointer}
+.chip.timer{font-variant-numeric:tabular-nums;color:var(--amber)}
+.chip.code{cursor:pointer}
+.tools button{background:var(--glass);min-height:40px;padding:8px 13px}
+.tools button.on{background:linear-gradient(180deg,#38bdf8,#0284c7);color:#04121f}
+.tools .unread{background:var(--red);color:#fff;border-radius:9px;padding:0 6px;font-size:11px;margin-left:4px}
+#banner{position:absolute;left:50%;top:70px;transform:translateX(-50%);width:min(680px,92vw);text-align:center;font-family:Cinzel,serif;font-size:clamp(17px,2.6vw,24px);font-weight:800;text-shadow:0 2px 12px rgba(0,0,0,.95),0 0 2px #000;pointer-events:none;transition:opacity .4s}
+#banner.death{color:#ffb4b4}#banner.win{color:#ffe08a;font-size:clamp(22px,3.6vw,34px)}
+#dock{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);width:min(720px,calc(100vw - 24px));padding:14px 16px;display:grid;gap:10px}
+#dock .title{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+#dock .title b{font-family:Cinzel,serif;font-size:17px}
+#dock .hint{font-size:14px;color:var(--dim)}
+.targets{display:flex;flex-wrap:wrap;gap:8px;max-height:132px;overflow:auto}
+.targets button{display:flex;align-items:center;gap:7px;padding:8px 12px;min-height:40px}
+.targets button i{width:10px;height:10px;border-radius:50%;background:var(--c)}
+.targets button.sel{background:rgba(245,185,66,.25);border-color:var(--amber)}
+.targets button .n{background:var(--amber);color:#1a1205;border-radius:8px;padding:0 6px;font-size:12px}
+.notes{font-size:13.5px;background:rgba(2,6,16,.5);border-radius:10px;padding:8px 10px;max-height:90px;overflow:auto}
+.notes div{padding:2px 0}.notes .wolf{color:#fca5a5;font-weight:800}
+.cam{position:absolute;left:12px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:6px}
+.cam button{background:var(--glass);min-width:44px;padding:8px}
+
+/* panel samping */
+.side{position:absolute;right:12px;top:66px;bottom:14px;width:min(380px,calc(100vw - 24px));display:flex;flex-direction:column;gap:10px;padding:16px;overflow:hidden}
+.side h3{margin:0;font-size:16px;display:flex;justify-content:space-between;align-items:center}
+.side .scroll{overflow:auto;display:grid;gap:10px;align-content:start}
+.box{border:1px solid var(--line);border-radius:12px;padding:12px;display:grid;gap:10px;background:rgba(2,6,16,.35)}
+.box.accent{border-color:rgba(56,189,248,.5)}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.grid3 label{font-size:12.5px;color:var(--dim)}
+.plist{display:grid;gap:6px}
+.pi{display:flex;align-items:center;gap:8px;background:rgba(2,6,16,.5);border:1px solid var(--line);border-left:4px solid var(--c);border-radius:10px;padding:8px 10px}
+.pi .nm{flex:1;font-weight:800}.pi small{display:block;font-weight:600;color:var(--dim)}
+.pi.dead{opacity:.55}
+.pi button{min-height:34px;padding:4px 10px;font-size:12.5px}
+.x{min-height:36px;width:36px;padding:0}
+/* chat */
+#chat{top:auto;height:min(460px,calc(100vh - 200px))}
+#chatLog{flex:1;overflow:auto;display:flex;flex-direction:column;gap:6px;font-size:14px}
+.cm{background:rgba(2,6,16,.45);border-radius:10px;padding:6px 10px}
+.cm b{color:var(--c,#cbd5e1)}
+.cm.sys{background:none;color:var(--dim);font-style:italic;padding:2px 4px}
+.cm.wolf{border-left:3px solid var(--red)}.cm.ghost{border-left:3px solid #64748b;opacity:.85}.cm.mod b{color:#c4b5fd}
+.ch{font-size:11px;font-weight:800;border-radius:5px;padding:0 5px;margin-right:4px}
+.ch.wolf{background:rgba(239,68,68,.25);color:#fca5a5}.ch.ghost{background:rgba(100,116,139,.35)}.ch.mod{background:rgba(139,92,246,.3);color:#ddd6fe}
+/* modal */
+.modal{position:fixed;inset:0;display:grid;place-items:center;background:rgba(2,4,10,.6);padding:14px;z-index:10;overflow:auto}
+.modal .card{width:min(860px,100%);max-height:calc(100vh - 28px);overflow:auto}
+.modal h2{margin:0;font-size:22px}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-top:14px}
+.rc{perspective:900px;height:210px;cursor:pointer}
+.rc .in{position:relative;width:100%;height:100%;transition:transform .6s;transform-style:preserve-3d}
+.rc.flip .in{transform:rotateY(180deg)}
+.rc .f,.rc .b{position:absolute;inset:0;backface-visibility:hidden;border-radius:14px;border:1px solid var(--line);padding:14px;display:flex;flex-direction:column;background:linear-gradient(160deg,#16243f,#0b1426)}
+.rc .b{transform:rotateY(180deg)}
+.rc.wolf .f,.rc.wolf .b{background:linear-gradient(160deg,#4a1218,#1c070a);border-color:rgba(239,68,68,.45)}
+.rc.mod .f,.rc.mod .b{background:linear-gradient(160deg,#35185f,#140a26);border-color:rgba(139,92,246,.5)}
+.rc .ic{font-size:34px}.rc .nm{font-weight:800;font-size:17px;margin-top:6px}.rc .fx{font-size:12.5px;color:var(--dim);font-weight:700}
+.rc .tap{margin-top:auto;font-size:12.5px;color:var(--amber);font-weight:800}
+.rc .b p{margin:0;font-size:14px}
+#reveal .big{width:min(300px,80vw);height:400px;margin:18px auto 6px}
+#reveal .big .ic{font-size:76px;text-align:center;margin-top:30px}
+#reveal .big .nm{font-family:Cinzel,serif;font-size:28px;text-align:center}
+#reveal .big .fx{text-align:center}
+#reveal .big .b p{font-size:16px}
+.endlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;margin:14px 0}
+@media(min-width:1000px){#hud.panel #dock{left:12px;transform:none;width:min(720px,calc(100vw - 420px))}}
+@media(max-width:999px){#hud.panel #dock{display:none}}
+@media(max-width:700px){
+  .chip{padding:6px 10px;font-size:12px;min-height:34px}.tools button{padding:6px 9px;font-size:12.5px;min-height:36px}
+  .tools .lbl{display:none}
+  #banner{top:118px}
+  .side{top:auto;height:62vh}
+  .cam{display:none}
+  #dock{bottom:8px;padding:12px}
+}
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+<div id="labels"></div>
+
+<!-- LOBBY -->
+<div id="lobby">
+  <div class="card">
+    <h1>Werewolf Online<small>Desa 3D multiplayer · ajak teman lewat kode room</small></h1>
+    <div class="status"><i class="dot" id="dot"></i><span id="statusText">Menghubungkan ke server…</span></div>
+    <input id="inName" placeholder="Nama kamu" maxlength="16" autocomplete="nickname" />
+    <div class="online-only grid2">
+      <input id="inRoomName" placeholder="Nama desa (opsional)" maxlength="30" />
+      <div class="row" style="justify-content:space-around">
+        <label class="ck"><input type="checkbox" id="ckMod" checked /> Host = Moderator</label>
+        <label class="ck server-only"><input type="checkbox" id="ckPublic" checked /> Publik</label>
+      </div>
+    </div>
+    <button class="b-cyan online-only" id="btnCreate">+ Buat Room Baru</button>
+    <div class="online-only">
+      <hr />
+      <div class="server-only"><div class="row" style="justify-content:space-between;margin:8px 0"><b>🏠 Room aktif (sentuh untuk gabung)</b><button id="btnRefresh">🔄 Refresh</button></div>
+      <div class="rooms" id="roomList"><div class="empty">Memuat…</div></div></div>
+      <div class="muted static-only" style="font-size:13.5px;margin:8px 0">Punya kode dari teman? Masukkan di bawah. Atau buka link undangan yang dibagikan host.</div>
+      <div class="row" style="margin-top:10px"><input id="inCode" class="grow" placeholder="Kode room (6 huruf)" maxlength="6" style="text-transform:uppercase" /><button id="btnJoinCode">Gabung Kode</button></div>
+    </div>
+    <button id="btnOffline">🤖 Latihan offline vs 7 bot</button>
+    <div class="msg" id="lobbyMsg"></div>
+  </div>
+</div>
+
+<!-- HUD -->
+<div id="hud" class="hidden">
+  <div class="top">
+    <div class="chips">
+      <div class="chip" id="chipPhase">🌲 Lobby</div>
+      <div class="chip role" id="chipRole" title="Lihat kartu peranmu">🎭 —</div>
+      <div class="chip code" id="chipCode" title="Salin link undangan">Room: —</div>
+      <div class="chip timer hidden" id="chipTimer">⏱ 0:00</div>
+    </div>
+    <div class="tools">
+      <button id="tFs" title="Layar penuh">⛶<span class="lbl"> FS</span></button>
+      <button id="tCard">🃏<span class="lbl"> Card</span></button>
+      <button id="tWarga">📋<span class="lbl"> Warga</span></button>
+      <button id="tChat">💬<span class="lbl"> Chat</span><span class="unread hidden" id="unread">0</span></button>
+      <button id="tLeave">🚪<span class="lbl"> Keluar</span></button>
+    </div>
+  </div>
+  <div id="banner"></div>
+
+  <div class="side card hidden" id="warga">
+    <h3>📋 Kontrol &amp; Warga Desa <button class="x" data-close="warga" aria-label="Tutup">✕</button></h3>
+    <div class="scroll" id="wargaBody"></div>
+  </div>
+  <div class="side card hidden" id="chat">
+    <h3>💬 Chat <span class="muted" id="chatMode" style="font-size:12.5px;font-family:'Nunito Sans'"></span><button class="x" data-close="chat" aria-label="Tutup">✕</button></h3>
+    <div id="chatLog"></div>
+    <form class="row" id="chatForm"><input id="chatIn" class="grow" maxlength="240" autocomplete="off" /><button class="b-cyan">Kirim</button></form>
+  </div>
+
+  <div class="card" id="dock"></div>
+  <div class="cam"><button id="cL" aria-label="Putar kiri">◀</button><button id="cR" aria-label="Putar kanan">▶</button><button id="cIn" aria-label="Perbesar">🔍+</button><button id="cOut" aria-label="Perkecil">🔍−</button></div>
+</div>
+
+<!-- MODALS -->
+<div class="modal hidden" id="guide"><div class="card">
+  <div class="row" style="justify-content:space-between"><div><h2>🃏 Panduan Role Card</h2><div class="muted">Sentuh kartu peran untuk membaliknya.</div></div><button class="x" data-close="guide" aria-label="Tutup">✕</button></div>
+  <div class="cards" id="guideCards"></div>
+</div></div>
+<div class="modal hidden" id="reveal"><div class="card" style="width:min(420px,100%);text-align:center">
+  <h2>Kartu Peranmu</h2><div class="muted">Sentuh kartu untuk membaliknya. Jangan tunjukkan ke orang lain!</div>
+  <div id="revealCard"></div>
+  <button class="b-cyan" data-close="reveal" style="width:100%">Saya mengerti</button>
+</div></div>
+<div class="modal hidden" id="end"><div class="card" style="width:min(720px,100%)">
+  <h2 id="endTitle"></h2>
+  <div class="endlist" id="endList"></div>
+  <div class="row"><button class="b-green grow hidden" id="btnAgain">🔁 Main lagi (kembali ke lobby)</button><button class="grow" data-close="end">Tutup</button></div>
+</div></div>
+
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>

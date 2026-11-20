@@ -1,0 +1,4 @@
+# Netlify: tidak perlu build, langsung sajikan file statis
+[build]
+  publish = "deploy/web"
+  command = "echo 'static build sudah tersedia'"

@@ -1,0 +1,30 @@
+{
+  "name": "werewolf-online",
+  "version": "1.0.0",
+  "description": "Game Werewolf multiplayer 3D di browser (Node.js + Socket.IO + Three.js)",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "dev": "concurrently -k \"node --watch server/index.js\" \"vite client\"",
+    "build": "vite build client",
+    "start": "node server/index.js",
+    "build:offline": "vite build client --mode single",
+    "build:static": "vite build client --mode static && node scripts/postbuild.mjs",
+    "peer": "peerjs --port 9000 --path /"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "peer": "^1.0.2",
+    "socket.io-client": "^4.8.1",
+    "three": "0.170.0",
+    "vite": "^6.0.5",
+    "vite-plugin-singlefile": "^2.1.0",
+    "peerjs": "^1.5.4"
+  }
+}

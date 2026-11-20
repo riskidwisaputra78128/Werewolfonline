@@ -1,0 +1,6 @@
+{
+  "buildCommand": "echo static",
+  "installCommand": "echo skip",
+  "outputDirectory": "deploy/web",
+  "framework": null
+}
