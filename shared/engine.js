@@ -73,7 +73,7 @@ export class Game {
   get seated() { return [...this.players.values()].filter((p) => p.id !== this.modId); }
   get alive() { return this.seated.filter((p) => p.alive); }
   aliveWolves() { return this.alive.filter((p) => p.role === 'werewolf'); }
-  announce(text, kind = 'info') { this.log.push({ t: Date.now(), text, kind }); if (this.log.length > 80) this.log.shift(); }
+  announce(text, kind = 'info', who = null) { this.log.push({ t: Date.now() + (this._lt = ((this._lt || 0) + 1) % 1000) / 1000, text, kind, who }); if (this.log.length > 80) this.log.shift(); }
   sys(text, channel = 'all') { this.pushChat({ id: 'sys', name: 'Moderator Desa', text, channel, sys: true }); }
   pushChat(m) { m.t = Date.now(); m.n = (this.chatSeq = (this.chatSeq || 0) + 1); this.chat.push(m); if (this.chat.length > 200) this.chat.shift(); }
 
@@ -105,7 +105,7 @@ export class Game {
     } else {
       // di tengah game: tandai mati & terputus agar tidak menghambat
       p.connected = false;
-      if (p.alive && id !== this.modId) { p.alive = false; p.diedDay = this.day; p.causeCode = 'left'; p.killer = null; this.announce(`${p.name} meninggalkan desa (${reason}).`, 'death'); }
+      if (p.alive && id !== this.modId) { p.alive = false; p.diedDay = this.day; p.causeCode = 'left'; p.killer = null; this.announce(`${p.name} meninggalkan desa (${reason}).`, 'death', p.id); }
     }
     if (id !== this.modId) this.sys(`${p.name} ${reason === 'dikeluarkan' ? 'dikeluarkan dari room' : 'meninggalkan room'}.`);
     if (id === this.modId) { this.modId = null; this.players.delete(id); this.sys('Moderator meninggalkan room. Game berjalan otomatis dengan timer.'); }
@@ -360,7 +360,7 @@ export class Game {
     } else {
       for (const id of this.pendingDeaths) {
         const d = this.players.get(id);
-        this.announce(`☠ ${d.name} ditemukan tewas — ${d.cause}.${this.settings.revealRoles ? ` Ia adalah ${ROLES[d.role].icon} ${ROLES[d.role].name}.` : ''}`, 'death');
+        this.announce(`☠ ${d.name} ditemukan tewas — ${d.cause}.${this.settings.revealRoles ? ` Ia adalah ${ROLES[d.role].icon} ${ROLES[d.role].name}.` : ''}`, 'death', d.id);
       }
     }
     this.sys(this.log[this.log.length - 1].text);
@@ -393,7 +393,7 @@ export class Game {
     if (t && t.alive && t.id !== id && t.id !== this.modId) {
       const h = this.players.get(id); if (h?.stats) h.stats[t.role === 'werewolf' ? 'hunterWolf' : 'hunterMiss']++;
       this.kill(t, 'terkena panah Hunter', id);
-      this.announce(`🏹 Panah Hunter menembus ${t.name}!${this.settings.revealRoles ? ` Ia adalah ${ROLES[t.role].icon} ${ROLES[t.role].name}.` : ''}`, 'death');
+      this.announce(`🏹 Panah Hunter menembus ${t.name}!${this.settings.revealRoles ? ` Ia adalah ${ROLES[t.role].icon} ${ROLES[t.role].name}.` : ''}`, 'death', t.id);
     } else this.announce(timeout ? 'Hunter tidak sempat menembak.' : 'Hunter menurunkan busurnya.', 'info');
     this.sys(this.log[this.log.length - 1].text);
     this.afterDeaths(this.hunterNext);
@@ -442,7 +442,7 @@ export class Game {
       msg = `⚖ Warga memutuskan mengeksekusi ${d.name} (${entries[0][1]} suara).${this.settings.revealRoles ? ` Ia adalah ${ROLES[d.role].icon} ${ROLES[d.role].name}.` : ''}`;
     }
     this.lastTally = t;
-    this.announce(msg, this.pendingDeaths.length ? 'death' : 'info');
+    this.announce(msg, this.pendingDeaths.length ? 'death' : 'info', this.pendingDeaths[0] || null);
     this.sys(msg);
     this.setPhase('verdict', 6);
   }

@@ -83,7 +83,7 @@ function featherTex() {
 }
 
 /** Material yang berkibar (shader vertex): makin ke bawah makin lebar ayunannya */
-function sway(mat, uTime, o) {
+export function sway(mat, uTime, o) {
   const { top, bottom, amp = 0.06, back = 0, phase = 0 } = o;
   const uPhase = { value: phase }, uWind = { value: 1 };
   mat.onBeforeCompile = (sh) => {

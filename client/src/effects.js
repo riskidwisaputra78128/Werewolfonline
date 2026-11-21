@@ -3,6 +3,20 @@ import * as THREE from 'three';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { makePlayerWerewolf } from './characters.js';
 
+/**
+ * Bebaskan memori GPU dari objek yang dibuang (geometri & material). Tekstur tidak dibuang karena
+ * dipakai bersama (cache). Geometri bertanda userData.shared (milik model GLB sumber) juga dilewati.
+ */
+export function disposeDeep(obj) {
+  if (!obj) return;
+  obj.parent?.remove(obj);
+  obj.traverse((o) => {
+    if (o.geometry && !o.geometry.userData?.shared) o.geometry.dispose();
+    if (o.isSkinnedMesh) o.skeleton?.dispose();
+    const ms = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
+    for (const m of ms) if (!m.userData?.shared) m.dispose();
+  });
+}
 const canvas = (w, h = w) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return [c, c.getContext('2d')]; };
 const ease = (t) => t * t * (3 - 2 * t);
 const clamp01 = (t) => Math.max(0, Math.min(1, t));
@@ -291,14 +305,14 @@ export class FX {
           w.root.position.lerpVectors(start, end, k); w.root.position.y = at.y + Math.sin(k * Math.PI) * 1.1 - seg(t, 2.2, 2.9) * 1.5;
           w.update(dt, k > 0 && k < 1 ? 8 : 0, { attack: seg(t, 0.6, 1.1) > 0 && seg(t, 0.6, 1.1) < 1 ? seg(t, 0.6, 1.1) : 0, attackArm: 1, howl: seg(t, 1.3, 2.1) > 0 && seg(t, 1.3, 2.1) < 1 ? seg(t, 1.3, 2.1) : 0 });
           return t < 3;
-        }, () => this.scene.remove(w.root)));
+        }, () => disposeDeep(w.root)));
         let clawed = false;
         this.add(new Timed((t) => {
           if (t > 0.78 && !clawed) {
             clawed = true;
             const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: clawTex(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, rotation: -0.4 }));
             sp.position.copy(chest); sp.scale.setScalar(0.2); this.scene.add(sp);
-            this.add(new Timed((u) => { const k = seg(u, 0, 0.15); sp.scale.setScalar(0.4 + k * 2.4); sp.material.opacity = 1 - seg(u, 0.35, 0.9); return u < 0.9; }, () => { this.scene.remove(sp); sp.material.dispose(); }));
+            this.add(new Timed((u) => { const k = seg(u, 0, 0.15); sp.scale.setScalar(0.4 + k * 2.4); sp.material.opacity = 1 - seg(u, 0.35, 0.9); return u < 0.9; }, () => { disposeDeep(sp); }));
             this.burst({ at: chest, n: 70, rgb: '200,10,10', size: 0.22, speed: 3.2, up: 0.6, gravity: -6, life: 1.4, spread: 1.4, blending: THREE.NormalBlending });
             this.burst({ at: chest, n: 30, rgb: '255,60,40', size: 0.5, speed: 1.5, life: 0.8 });
             this.light(chest, 0xff2010, 60, 0.6);
@@ -322,7 +336,7 @@ export class FX {
           pm.opacity = seg(t, 0.5, 1.2) * (1 - seg(t, 2.1, 2.6)) * 0.55; pm.map.offset.x += dt * 0.15; pil.scale.set(1, seg(t, 0.5, 1.1), 1); pil.position.y = at.y + 7 * seg(t, 0.5, 1.1);
           if (lt) lt.intensity = on * 25 + (t > 2.05 && t < 2.3 ? 60 : 0);
           return t < 3.6;
-        }, () => { this.scene.remove(circ, pil); this.release(lt); rm.dispose(); }));
+        }, () => { disposeDeep(circ); disposeDeep(pil); this.release(lt); }));
         this.burst({ at: at.clone().setY(at.y + 0.2), n: 80, rgb: '255,90,50', size: 0.16, speed: 0.6, up: 3, gravity: 0.5, life: 2.4, spread: 0.6, swirl: 3, radius: 1.2, delay: 0.6 });
         let dropped = false;
         this.add(new Timed((t) => { if (t > 2.05 && !dropped) { dropped = true; v.shake(0.25); this.burst({ at: chest, n: 60, rgb: '255,200,160', size: 0.35, speed: 4, up: 0.3, gravity: -2, life: 0.9, spread: 1.6 }); } return t < 2.5; }));
@@ -360,7 +374,7 @@ export class FX {
             }
           }
           return t < 30;
-        }, () => { arrow.parent?.remove(arrow); }));
+        }, () => { disposeDeep(arrow); }));
         break;
       }
       case 'sniper': {
@@ -388,7 +402,7 @@ export class FX {
             this.light(chest, 0xffaa60, 50, 0.4);
           }
           return t < 1.6;
-        }, () => { this.scene.remove(laser, dot, flash, tracer); laserM.dispose(); tracerM.dispose(); }));
+        }, () => { [laser, dot, flash, tracer].forEach(disposeDeep); }));
         break;
       }
       case 'guard': {
@@ -409,7 +423,7 @@ export class FX {
           for (const m of shards) { m.userData.v.y -= 9 * dt; m.position.addScaledVector(m.userData.v, dt); m.rotation.x += dt * 6; m.rotation.y += dt * 4; if (m.position.y < at.y) { m.position.y = at.y; m.userData.v.multiplyScalar(0.3); m.userData.v.y *= -0.4; } }
           shardM.opacity = 1 - seg(t, 1.8, 2.8);
           return t < 2.8;
-        }, () => { this.scene.remove(dome, ...shards); dm.dispose(); shardM.dispose(); shardG.dispose(); }));
+        }, () => { disposeDeep(dome); shards.forEach((m) => m.parent?.remove(m)); shardM.dispose(); shardG.dispose(); }));
         break;
       }
       default:

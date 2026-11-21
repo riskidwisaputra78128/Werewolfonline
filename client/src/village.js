@@ -10,9 +10,10 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { fbm, simplex2, mulberry32, smoothstep, lerp } from './noise.js';
 import * as T from './textures.js';
 import { createBiped, clothMat, makePlayerWerewolf, makeElder } from './characters.js';
-import { FX, gradePass } from './effects.js';
+import { FX, gradePass, disposeDeep } from './effects.js';
 import { createHero, upgradeWolf } from './heroes.js';
-import { loadHumans, createReal, humansReady } from './realhumans.js';
+import { loadHumans, createReal, humansReady, VARIANTS } from './realhumans.js';
+const MOD_VARIANT = { id: 'mod', body: 'female', outfit: '#f2efe6', accent: '#d8b06a', skin: 1, head: 'halo', weapon: 'staff', orb: 0xffe2a0, cape: 0xf2efe6 };
 const ease = (t) => t * t * (3 - 2 * t);
 const seg = (t, a, b) => Math.max(0, Math.min(1, (t - a) / (b - a)));
 
@@ -252,11 +253,12 @@ export class Village {
 
   // ---------------- avatar ----------------
   sync(players, opts = {}) {
+    this._lastPlayers = players; this._lastOpts = opts;
     const seated = players.filter((p) => !p.isMod);
     const mod = players.find((p) => p.isMod);
     const ids = new Set(seated.map((p) => p.id));
     for (const [id, a] of this.avatars) if (!ids.has(id)) {
-      this.scene.remove(a.root); a.label.remove(); a.grave && this.scene.remove(a.grave); this.avatars.delete(id);
+      disposeDeep(a.root); a.label.remove(); disposeDeep(a.grave); this.avatars.delete(id);
       this.deathQueue = this.deathQueue.filter((x) => x !== a); if (this.cine?.a === a) this.cine = null;
     }
     const n = seated.length, rad = Math.max(6, n * 0.75);
@@ -265,14 +267,17 @@ export class Village {
     seated.forEach((p, i) => {
       let a = this.avatars.get(p.id);
       if (!a) {
-        const rig = (humansReady() && createReal({ color: p.color, seed: p.id + p.name, uTime: this.uTime })) || createHero({ color: p.color, seed: p.id + p.name, uTime: this.uTime });
+        // tiap warga dapat tipe kostum berbeda (16 tipe, tidak kembar selama ≤16 pemain)
+        const used = new Set([...this.avatars.values()].map((x) => x.variant));
+        let variant = 0; while (used.has(variant) && variant < VARIANTS.length - 1) variant++;
+        const rig = (humansReady() && createReal({ color: p.color, seed: p.id + p.name, uTime: this.uTime, variant: VARIANTS[variant] })) || createHero({ color: p.color, seed: p.id + p.name, uTime: this.uTime });
         const root = new THREE.Group(); root.add(rig.root);
         const ringMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false });
         const ring = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.75, 32), ringMat); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.05; root.add(ring);
         const hit = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 2.2, 8), new THREE.MeshBasicMaterial({ visible: false })); hit.position.y = 1.1; hit.userData.pid = p.id; root.add(hit);
         const label = document.createElement('div'); label.className = 'plabel'; this.labels.appendChild(label);
         this.scene.add(root);
-        a = { rig, root, ring, hit, label, angle: 0, deadT: 0, bubbleT: 0, wasAlive: p.alive };
+        a = { rig, root, ring, hit, label, angle: 0, deadT: 0, bubbleT: 0, wasAlive: p.alive, variant };
         if (!p.alive) a.deadPose = { x: -Math.PI / 2, z: 0, y: 0.15 };
         this.avatars.set(p.id, a);
       }
@@ -299,7 +304,7 @@ export class Village {
       // werewolf terungkap di akhir game
       const showWolf = opts.reveal && p.role === 'werewolf';
       if (showWolf && !a.wolf) { a.wolf = upgradeWolf(makePlayerWerewolf(), this.uTime); a.root.add(a.wolf.root); a.rig.root.visible = false; a.wolfT = 0; }
-      if (!showWolf && a.wolf) { a.root.remove(a.wolf.root); a.wolf = null; a.rig.root.visible = true; }
+      if (!showWolf && a.wolf) { disposeDeep(a.wolf.root); a.wolf = null; a.rig.root.visible = true; }
       if (!p.alive && !a.grave && !a.pending && !a.death) this.makeGrave(a, true);
       // jasad di sisi kamera disembunyikan saat podium supaya tidak menghalangi
       const hideFront = this.podiumIds.length && !a.onPodium && !p.alive && a.seat.z > 1.5;
@@ -315,15 +320,15 @@ export class Village {
   swapRigs() {
     for (const a of this.avatars.values()) {
       if (a.rig.kind === 'real') continue;
-      const nr = createReal({ color: a.p.color, seed: a.p.id + a.p.name, uTime: this.uTime }); if (!nr) return;
+      const nr = createReal({ color: a.p.color, seed: a.p.id + a.p.name, uTime: this.uTime, variant: VARIANTS[a.variant] }); if (!nr) return;
       const old = a.rig.root;
       nr.root.rotation.copy(old.rotation); nr.root.position.copy(old.position);
       nr.root.visible = old.visible && !a.wolf;
-      a.root.remove(old); a.root.add(nr.root); a.rig = nr;
+      disposeDeep(old); a.root.add(nr.root); a.rig = nr;
       a.rig.setDead?.(!a.p.alive);
     }
-    const m = createReal({ color: '#ffe2a0', seed: 'moderator', gender: 'female', halo: true, uTime: this.uTime });
-    if (m) { m.root.position.copy(this.modRig.root.position); m.root.rotation.copy(this.modRig.root.rotation); m.root.visible = this.modRig.root.visible; this.scene.remove(this.modRig.root); this.scene.add(m.root); this.modRig = m; }
+    const m = createReal({ color: '#ffe2a0', seed: 'moderator', variant: MOD_VARIANT, uTime: this.uTime });
+    if (m) { m.root.position.copy(this.modRig.root.position); m.root.rotation.copy(this.modRig.root.rotation); m.root.visible = this.modRig.root.visible; disposeDeep(this.modRig.root); this.scene.add(m.root); this.modRig = m; }
   }
   makeGrave(a, instant) {
     a.grave = new THREE.Group();
@@ -336,21 +341,27 @@ export class Village {
     this.scene.add(a.grave);
   }
   revive(a) {
-    if (a.grave) this.scene.remove(a.grave);
+    disposeDeep(a.grave);
     a.grave = null; a.deadPose = null; a.death = null; a.pending = null; a.deadT = 0;
     this.deathQueue = this.deathQueue.filter((x) => x !== a);
     a.rig.root.rotation.set(0, 0, 0); a.rig.root.position.set(0, 0, 0);
-    a.rig.root.children.filter((c) => c.isGroup && c.userData.arrow).forEach((c) => a.rig.root.remove(c));
+    a.rig.root.children.filter((c) => c.isGroup && c.userData.arrow).forEach((c) => disposeDeep(c));
     for (const m of a.rig.mats || []) if (m.emissive) { m.emissive.setHex(0x000000); m.emissiveIntensity = 1; }
   }
   /** Pemain yang naik podium (urut peringkat 1,2,3) atau [] untuk menyembunyikan */
   setPodium(ids) {
     const next = (ids || []).slice(0, 3), key = next.join(',');
+    // tunda podium sampai animasi kematian terakhir selesai
+    if (next.length && (this.deathQueue.length || this.cine)) { clearTimeout(this._podT); this._podT = setTimeout(() => { this.setPodium(ids); this.sync(this._lastPlayers || [], this._lastOpts || {}); }, 400); return; }
+    clearTimeout(this._podT);
     if (key === this.podiumIds.join(',')) return;
     this.podiumIds = next;
     this.fx.showPodium(next.length > 0);
     if (next.length) { this.podiumCamT = 0; this.camHold = 0; }
   }
+  /** urutkan antrean kematian sesuai urutan di log sistem */
+  orderDeaths(ids) { this.deathQueue.sort((x, y) => ids.indexOf(x.p.id) - ids.indexOf(y.p.id)); }
+  hasPendingDeath(id) { const a = this.avatars.get(id); return !!(a && (a.pending || a.death)); }
   shake(a) { this.shakeAmt = Math.max(this.shakeAmt, a); }
   flashRed(a) { this.redPulse = Math.max(this.redPulse, a); }
   startDeath(a) {
@@ -361,7 +372,8 @@ export class Village {
     // simpan posisi kamera sebelum zoom-in, untuk dikembalikan setelah animasi
     if (!this.cine && !(this.restoreT > 0)) { this.preCam = this.camera.position.clone(); this.preTarget = this.controls.target.clone(); }
     this.cine = { a, t: 0, dur: a.death.dur + 0.5 }; this.camHold = 0; this.restoreT = 0;
-    this.cineGap = a.death.dur * 0.75;
+    this.cineGap = a.death.dur + 0.9; // antre penuh: korban berikutnya baru mulai setelah animasi ini selesai
+    this.onDeathStart?.(a.p.id, a.death.dur + 0.9);
   }
   poseDeath(a, dt) {
     const d = a.death, t = (d.t += dt), r = a.rig.root;

@@ -54,6 +54,7 @@ Daftar room dibaca dari `meta` tiap room di `ww/rooms`, jadi cukup rules yang me
 - Chat umum, chat rahasia serigala, chat arwah, plus gelembung chat di atas avatar.
 - Desa 3D: siang/malam mengikuti fase, klik avatar untuk memilih target, nisan untuk pemain mati, werewolf berubah wujud di akhir.
 - Bot pengisi dan latihan offline vs 7 bot.
+- **16 tipe warga berbeda** (Ksatria, Penyihir, Penjaga Hutan, Pendeta, Warlock, Pemburu, Paladin, Penyair, Viking, Penyihir Elf, Pembunuh Bayaran, Tabib, Samurai, Ahli Nujum, Gladiator, Bangsawan): kostum, warna baju & kulit, aksesori kepala, jubah, senjata, dan proporsi badan berbeda — tidak ada yang kembar selama ≤16 pemain.
 - **Karakter manusia realistis** (model GLB ber-rig Mixamo: pria berzirah yang warnanya mengikuti warna pemain, dan wanita) dengan animasi idle, tarian kemenangan di podium, plus aura & kristal warna pemain. File ada di `deploy/web/models/` — ikut ter-upload saat deploy Vercel/Netlify. Versi Apps Script tidak bisa memuat file model, jadi otomatis memakai karakter bawaan.
 - Karakter bawaan (cadangan) bergaya fantasi: jubah berbordir yang berkibar, cape, pauldron, rambut & telinga elf acak, orb sihir, tongkat, kristal melayang, aura warna pemain. Moderator bersayap dengan halo.
 - Tema visual dark fantasy: rune merah menyala, panel bergaya grimoire, kartu peran tome 3D (miring mengikuti kursor) dengan sigil berbeda tiap peran.

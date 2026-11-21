@@ -11,8 +11,11 @@ const LS = { get: (k) => { try { return localStorage.getItem(k); } catch { retur
 const MODE = typeof __MODE__ !== 'undefined' ? __MODE__ : 'server';
 const GAS = typeof google !== 'undefined' && google.script; // berjalan di Google Apps Script
 
-let sid = LS.get('ww_sid');
-if (!sid) { sid = 's' + Math.random().toString(36).slice(2) + Date.now().toString(36); LS.set('ww_sid', sid); }
+// ID pemain per TAB (sessionStorage): tab berbeda = pemain berbeda, refresh di tab yang sama = pemain yang sama.
+// (Dulu localStorage → semua tab satu browser dianggap pemain yang sama, nama & peran jadi tertukar.)
+const SS = { get: (k) => { try { return sessionStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { sessionStorage.setItem(k, v); } catch { /* */ } } };
+let sid = SS.get('ww_sid');
+if (!sid) { sid = 's' + Math.random().toString(36).slice(2) + Date.now().toString(36); SS.set('ww_sid', sid); }
 $('inName').value = LS.get('ww_name') || '';
 
 const audio = new Audio();
@@ -144,6 +147,7 @@ function onState(v) {
   V = v; offset = v.now - Date.now();
   if (first) {
     $('lobby').classList.add('hidden'); $('hud').classList.remove('hidden');
+    stopRoomWatch?.(); stopRoomWatch = null; // tidak perlu cek daftar room selama bermain
     village.controls.autoRotate = false;
     if (T === net && !GAS) { try { history.replaceState(null, '', location.pathname + location.search + '#' + v.code); } catch { /* */ } }
     if (MODE === 'static' && net.role === 'host') banner('Kamu host room ini — biarkan tab ini tetap terbuka selama permainan.', 'info');
@@ -155,9 +159,21 @@ function onState(v) {
   village.setPodium(v.phase === 'end' && v.podium ? v.podium.filter((r) => r.winner).slice(0, 3).map((r) => r.id) : []);
   village.sync(v.players, { reveal: v.phase === 'end' });
   if (TIME[v.phase] != null) village.setTimeOfDay(v.phase === 'end' && v.winner === 'wolf' ? 0.95 : TIME[v.phase]);
-  // banner pengumuman
-  const last = v.log.at(-1);
-  if (last && last.t > lastLogT) { lastLogT = last.t; banner(last.text, last.kind); if (last.kind === 'death') audio.hit(); }
+  // pengumuman: semua log baru ditampilkan BERGANTIAN; log kematian tampil bersamaan dengan animasinya
+  const fresh = v.log.filter((e) => e.t > lastLogT);
+  if (fresh.length) {
+    lastLogT = fresh.at(-1).t;
+    const deathIds = [];
+    for (const e of fresh) {
+      if (e.kind === 'death' && e.who && village.avatars.has(e.who)) { deathLog.set(e.who, e); deathIds.push(e.who); }
+      else queueBanner(e.text, e.kind);
+    }
+    if (deathIds.length) setTimeout(() => {
+      village.orderDeaths(deathIds);
+      // korban yang tidak punya animasi (mis. sudah tidak terlihat) tetap diumumkan lewat antrean
+      for (const id of deathIds) if (!village.hasPendingDeath(id) && deathLog.has(id)) { queueBanner(deathLog.get(id).text, 'death'); deathLog.delete(id); }
+    }, 0);
+  }
   // chat baru
   for (const m of v.chat) if (m.n > lastChatN) {
     if (!m.sys && m.channel === 'all') village.bubble(m.id, m.text);
@@ -169,16 +185,42 @@ function onState(v) {
 function onPhaseChange(v, prev) {
   if (v.phase === 'night') { audio.howl(); }
   else if (v.phase === 'reveal' && revealShown !== v.code + v.day) { revealShown = v.code + v.day; showReveal(); }
-  else if (v.phase === 'end' && !endShown) { endShown = true; setTimeout(() => village.howl(), 1200); setTimeout(() => { if (V?.phase === 'end') showEnd(); }, 4200); audio.level(); }
+  else if (v.phase === 'end' && !endShown) { endShown = true; afterDeaths(() => village.howl(), 600); afterDeaths(() => { if (V?.phase === 'end') showEnd(); }, 3800); audio.level(); }
   else if (prev) audio.tone(660, 0.25, 'triangle', 0.1);
   if (v.phase !== 'end') endShown = false;
   if (v.phase === 'lobby') $('end').classList.add('hidden');
 }
-let bannerTimer;
-function banner(text, kind) {
+let bannerTimer, bannerBusyUntil = 0;
+const deathsPlaying = () => village.deathQueue.length > 0 || !!village.cine;
+/** jalankan fn setelah antrean animasi kematian kosong (dicek berkala) */
+function afterDeaths(fn, extra = 0) { const tick = () => (deathsPlaying() ? setTimeout(tick, 300) : setTimeout(fn, extra)); tick(); }
+const bannerQ = [], deathLog = new Map();
+function banner(text, kind, ms) {
   const b = $('banner'); b.textContent = text; b.className = kind || ''; b.style.opacity = 1;
-  clearTimeout(bannerTimer); bannerTimer = setTimeout(() => (b.style.opacity = 0), kind === 'win' ? 9000 : 5000);
+  ms = ms || (kind === 'win' ? 9000 : 4200);
+  clearTimeout(bannerTimer); bannerTimer = setTimeout(() => { b.style.opacity = 0; setTimeout(nextBanner, 350); }, ms);
+  bannerBusyUntil = Date.now() + ms + 350;
 }
+function queueBanner(text, kind) {
+  if (kind === 'info' && !V) return banner(text, kind); // pesan kecil di luar game langsung tampil
+  // pengumuman fase/info yang lebih lama tidak relevan lagi → cukup simpan yang terbaru
+  if (kind !== 'death') for (let i = bannerQ.length - 1; i >= 0; i--) if (bannerQ[i].kind !== 'death') bannerQ.splice(i, 1);
+  bannerQ.push({ text, kind, at: Date.now() });
+  if (Date.now() > bannerBusyUntil) nextBanner();
+}
+function nextBanner() {
+  if (Date.now() < bannerBusyUntil - 400) return;
+  let n; while ((n = bannerQ.shift()) && n.kind !== 'death' && n.kind !== 'win' && Date.now() - n.at > 9000) { /* lewati yang basi */ }
+  // pengumuman menang ditahan sampai semua animasi kematian selesai
+  if (n && n.kind === 'win' && deathsPlaying()) { bannerQ.unshift(n); setTimeout(nextBanner, 400); return; }
+  if (n) banner(n.text, n.kind);
+}
+// saat animasi kematian seseorang dimulai → tampilkan pengumumannya, ditahan selama animasi
+village.onDeathStart = (id, dur) => {
+  const e = deathLog.get(id); if (!e) return;
+  deathLog.delete(id); audio.hit();
+  banner(e.text, 'death', Math.max(3500, dur * 1000));
+};
 
 // ================= RENDER =================
 const P = (id) => V.players.find((p) => p.id === id);
