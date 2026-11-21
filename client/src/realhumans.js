@@ -62,7 +62,9 @@ function turn(bone, root, axis, angle) {
   bone.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(_v, angle));
   bone.updateMatrixWorld(true);
 }
-const X = new THREE.Vector3(1, 0, 0), Z = new THREE.Vector3(0, 0, 1);
+// koreksi pose lengan model pria (hasil pengukuran arah tulang): lengan lurus ke bawah, siku sedikit menekuk ke depan
+const MAN_ARM = { armZ: -0.6, armX: -0.15, foreZ: 0, foreY: 0, foreX: 0.22 };
+const X = new THREE.Vector3(1, 0, 0), Y = new THREE.Vector3(0, 1, 0), Z = new THREE.Vector3(0, 0, 1);
 
 /** @param o {color, seed, uTime, variant?:object (dari VARIANTS), gender?, halo?} */
 export function createReal(o = {}) {
@@ -112,7 +114,7 @@ export function createReal(o = {}) {
 
   const root = new THREE.Group(); const rig = new THREE.Group(); rig.add(model); root.add(rig);
   const B = (n) => model.getObjectByName('mixamorig' + n) || model.getObjectByName(n);
-  const bones = { hips: B('Hips'), spine: B('Spine1'), chest: B('Spine2'), neck: B('Neck'), lSh: B('LeftShoulder'), rSh: B('RightShoulder'), head: B('Head'), rArm: B('RightArm'), lArm: B('LeftArm'), rFore: B('RightForeArm'), lFore: B('LeftForeArm'), rUp: B('RightUpLeg'), lUp: B('LeftUpLeg'), rLeg: B('RightLeg'), lLeg: B('LeftLeg') };
+  const bones = { hips: B('Hips'), spine: B('Spine1'), chest: B('Spine2'), neck: B('Neck'), lSh: B('LeftShoulder'), rSh: B('RightShoulder'), head: B('Head'), rArm: B('RightArm'), lArm: B('LeftArm'), rFore: B('RightForeArm'), lFore: B('LeftForeArm'), lHand: B('LeftHand'), rHand: B('RightHand'), rUp: B('RightUpLeg'), lUp: B('LeftUpLeg'), rLeg: B('RightLeg'), lLeg: B('LeftLeg') };
 
   // simpan rotasi dasar tulang yang kita ubah, supaya pose tambahan tidak menumpuk tiap frame
   const baseQ = new Map(Object.values(bones).filter(Boolean).map((b) => [b, b.quaternion.clone()]));
@@ -204,7 +206,15 @@ export function createReal(o = {}) {
         const br = Math.sin(t * age.breath) * age.depth * (dead ? 0 : 1), sw = Math.sin(t * 0.55), look = Math.sin(t * 0.31) * 0.35 + Math.sin(t * 0.83) * 0.12;
         turn(bones.lArm, root, Z, -1.2 - br * 0.05); turn(bones.rArm, root, Z, 1.2 + br * 0.05);
         turn(bones.lArm, root, X, -0.12 - sw * 0.04); turn(bones.rArm, root, X, -0.12 + sw * 0.04);
-        turn(bones.lFore, root, X, -0.35 - br * 0.05); turn(bones.rFore, root, X, -0.35 - br * 0.05);
+        if (gender === 'man') {
+          // model pria: lengan bawah diluruskan searah lengan atas (tanpa ini siku menekuk keluar, telapak menghadap depan)
+          const T = (typeof window !== 'undefined' && window.__armTune) || MAN_ARM;
+          turn(bones.lArm, root, Z, -T.armZ); turn(bones.rArm, root, Z, T.armZ);
+          turn(bones.lArm, root, X, T.armX || 0); turn(bones.rArm, root, X, T.armX || 0);
+          turn(bones.lFore, root, Z, -T.foreZ); turn(bones.rFore, root, Z, T.foreZ);
+          turn(bones.lFore, root, Y, T.foreY); turn(bones.rFore, root, Y, -T.foreY);
+          turn(bones.lFore, root, X, T.foreX - br * 0.04); turn(bones.rFore, root, X, T.foreX - br * 0.04);
+        } else { turn(bones.lFore, root, X, -0.35 - br * 0.05); turn(bones.rFore, root, X, -0.35 - br * 0.05); }
         turn(bones.spine, root, X, br * 0.035 + age.hunch * 0.6); turn(bones.chest, root, X, -br * 0.02 + age.hunch * 0.4);
         turn(bones.lSh, root, Z, br * 0.06); turn(bones.rSh, root, Z, -br * 0.06);
         turn(bones.hips, root, Z, sw * 0.035);
