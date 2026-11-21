@@ -46,7 +46,7 @@ export class FirebaseTransport extends Emitter {
     this.unsubs = [];
   }
   r(path) { return ref(database(), `ww/rooms/${this.code}${path ? '/' + path : ''}`); }
-  lobbyRef() { return ref(database(), `ww/lobby/${this.code}`); }
+  lobbyRef() { return ref(database(), `${LOBBY}/${this.code}`); }
   listen(unsub) { this.unsubs.push(unsub); }
 
   // ================= HOST =================
@@ -276,6 +276,8 @@ export class FirebaseTransport extends Emitter {
   }
 }
 
+// daftar room disimpan di dalam ww/rooms supaya ikut rules yang sudah ada
+const LOBBY = 'ww/rooms/_lobby';
 const STALE_MS = 3 * 60e3; // tanpa detak > 3 menit = host sudah pergi
 
 /**
@@ -292,7 +294,7 @@ export function watchRooms(cb) {
       const fresh = r && typeof r.t === 'number' && now - r.t < STALE_MS;
       if (!fresh || !r.players) {
         if (r && typeof r.t === 'number') { // sisa room yatim: hapus dari daftar & database
-          remove(ref(database(), `ww/lobby/${code}`)).catch(() => {});
+          remove(ref(database(), `${LOBBY}/${code}`)).catch(() => {});
           remove(ref(database(), `ww/rooms/${code}`)).catch(() => {});
         }
         continue;
@@ -302,7 +304,7 @@ export function watchRooms(cb) {
     rooms.sort((a, b) => (a.phase === 'lobby' ? 0 : 1) - (b.phase === 'lobby' ? 0 : 1) || b.t - a.t);
     if (!stopped) cb(rooms);
   };
-  const unsub = onValue(ref(database(), 'ww/lobby'), (s) => { last = s.val() || {}; emit(last); },
+  const unsub = onValue(ref(database(), LOBBY), (s) => { last = s.val() || {}; emit(last); },
     (e) => { console.warn('[fb] daftar room', e); if (!stopped) cb(null, fbError(e)); });
   const tick = setInterval(() => { if (last) emit(last); }, 30000);
   return () => { stopped = true; unsub(); offUnsub(); clearInterval(tick); };
@@ -313,7 +315,7 @@ async function cleanupOldRooms() {
   try {
     const q = query(ref(database(), 'ww/rooms'), orderByChild('meta/t'), endAt(Date.now() - 6 * 3600e3), limitToFirst(20));
     const snap = await get(q);
-    snap.forEach((c) => { remove(c.ref).catch(() => {}); });
+    snap.forEach((c) => { if (c.key !== '_lobby') remove(c.ref).catch(() => {}); });
   } catch { /* */ }
 }
 

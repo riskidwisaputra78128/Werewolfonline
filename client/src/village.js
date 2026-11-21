@@ -340,7 +340,9 @@ export class Village {
     let from = null;
     if (pend.killer) { const k = this.avatars.get(pend.killer); if (k) from = (k.grave ? k.grave.position : k.root.position).clone(); }
     a.death = this.fx.death(pend.kind, a, from);
-    this.cine = { a, t: 0, dur: a.death.dur + 0.5 }; this.camHold = 0;
+    // simpan posisi kamera sebelum zoom-in, untuk dikembalikan setelah animasi
+    if (!this.cine && !(this.restoreT > 0)) { this.preCam = this.camera.position.clone(); this.preTarget = this.controls.target.clone(); }
+    this.cine = { a, t: 0, dur: a.death.dur + 0.5 }; this.camHold = 0; this.restoreT = 0;
     this.cineGap = a.death.dur * 0.75;
   }
   poseDeath(a, dt) {
@@ -457,12 +459,19 @@ export class Village {
 
 Village.prototype.cameraDirector = function (dt) {
   const c = this.controls;
-  if (this.camHold > 0) { this.camHold -= dt; if (this.cine) this.cine.t += dt; return; }
+  if (this.camHold > 0) { this.camHold -= dt; if (this.cine) this.cine.t += dt; this.restoreT = 0; return; }
   let tgt = this.home, dist = null;
   if (this.cine) {
     this.cine.t += dt;
     tgt = this.cine.a.root.position.clone().setY(this.cine.a.root.position.y + 1.1); dist = 11;
-    if (this.cine.t > this.cine.dur) this.cine = null;
+    if (this.cine.t > this.cine.dur) { this.cine = null; if (!this.deathQueue.length && this.preCam) this.restoreT = 2.5; }
+  } else if (this.restoreT > 0 && this.preCam && !this.podiumIds.length) {
+    // zoom out kembali ke posisi kamera semula
+    this.restoreT -= dt;
+    const k = Math.min(1, dt * 2.2);
+    c.target.lerp(this.preTarget, k); this.camera.position.lerp(this.preCam, k);
+    if (this.restoreT <= 0) this.preCam = null;
+    return;
   } else if (this.podiumIds.length) {
     // podium sedikit di atas tengah layar supaya tidak tertutup panel kontribusi
     tgt = this.podiumAt.clone().add(new THREE.Vector3(0, 0.9, 2.6));

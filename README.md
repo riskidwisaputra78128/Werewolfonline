@@ -28,10 +28,7 @@ Versi **tanpa server** (Netlify/Vercel/Pages/Apps Script) memakai **P2P (WebRTC 
 - Versi **Firebase** menampilkan **daftar room aktif** di halaman awal: pemain tinggal sentuh *Gabung*, tanpa kode. Room otomatis hilang dari daftar saat host keluar/menutup tab, dan sisa room yatim dibersihkan sendiri. Host bisa mematikan *Tampilkan di daftar* untuk room privat.
 
 ### Rules Firebase Realtime Database
-Daftar room disimpan di `ww/lobby`, jadi rules harus mengizinkan path itu juga, misalnya:
-```json
-{ "rules": { "ww": { ".read": true, ".write": true } } }
-```
+Daftar room disimpan di `ww/rooms/_lobby`, jadi cukup rules yang mengizinkan baca/tulis `ww/rooms` (tidak perlu rules tambahan).
 - Pada jaringan yang sangat ketat (sebagian WiFi kantor), koneksi bisa gagal. Coba jaringan lain atau hotspot HP.
 
 ### Netlify (paling mudah)
