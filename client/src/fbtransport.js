@@ -301,7 +301,8 @@ export function watchRooms(cb) {
         if (m.pub === false || m.players === 0) return;
         rooms.push({ code, name: m.name || 'Desa ' + code, host: m.hostName, players: m.players ?? '?', humans: m.humans, phase: m.phase || 'lobby', phaseName: m.phaseName || 'Lobby', day: m.day || 0, hasMod: !!m.hasMod, t: last });
       });
-      rooms.sort((a, b) => (a.phase === 'lobby' ? 0 : 1) - (b.phase === 'lobby' ? 0 : 1) || b.t - a.t);
+      const rank = (p) => (p === 'lobby' ? 0 : p === 'end' ? 1 : 2);
+      rooms.sort((a, b) => rank(a.phase) - rank(b.phase) || b.t - a.t);
       if (!stopped) cb(rooms);
     } catch (e) { console.warn('[fb] daftar room', e); if (!stopped) cb(null, fbError(e)); }
     busy = false;

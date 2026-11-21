@@ -18,7 +18,7 @@ export function loadHumans(base = 'models/') {
   if (loading) return loading;
   const loader = new GLTFLoader();
   const get = (f) => new Promise((res, rej) => loader.load(base + f, res, undefined, rej));
-  loading = Promise.all([get('soldier.glb'), get('michelle.glb')]).then(([sol, mic]) => {
+  loading = Promise.all([get('soldier.glb'), get('michelle.glb'), get('man.glb').catch(() => null)]).then(([sol, mic, man]) => {
     const clip = (g, n) => g.animations.find((a) => a.name === n);
     const prep = (g) => { g.scene.traverse((m) => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false; m.geometry.userData.shared = true; } }); return g.scene; };
     const solScene = prep(sol), micScene = prep(mic);
@@ -27,6 +27,8 @@ export function loadHumans(base = 'models/') {
       male: { scene: solScene, idle: clip(sol, 'Idle'), dance: null },
       female: { scene: micScene, idle: null, tpose: clip(mic, 'TPose'), dance: clip(mic, 'SambaDance') },
     };
+    // pria biasa (avatar realistis berjanggut); tanpa klip → idle dibentuk dari tulang
+    lib.man = man ? { scene: prep(man), idle: null, tpose: null, dance: null } : lib.male;
     return lib;
   }).catch((e) => { console.warn('[model] model realistis tidak dimuat, pakai karakter bawaan', e); return null; });
   return loading;
@@ -69,7 +71,7 @@ export function createReal(o = {}) {
   const h = hash(o.seed ?? Math.random());
   const V = o.variant || null;
   const gender = V ? V.body : o.gender || (h % 2 ? 'female' : 'male');
-  const src = lib[gender];
+  const src = lib[gender] || lib.male;
   const accent = new THREE.Color(o.color || '#c0392b');
   const model = SkeletonUtils.clone(src.scene);
   const mats = [];
@@ -79,20 +81,26 @@ export function createReal(o = {}) {
     // zirah pria diwarnai sesuai warna pemain (kecuali visor)
     if (gender === 'male' && !/visor/i.test(m.material.name)) m.material.color.lerp(V ? new THREE.Color(V.armor) : accent, V ? 0.8 : 0.55);
     if (gender === 'female' && V && m.material.map) { m.material.map = recolorTexture(m.material.map, V); m.material.needsUpdate = true; }
+    if (gender === 'man' && V) { // baju atas/bawah diwarnai sesuai tipe; topi bawaan disembunyikan kalau tipe punya aksesori kepala
+      const n = m.material.name;
+      if (/Outfit_Top/.test(n)) m.material.color.lerp(new THREE.Color(V.armor), 0.75);
+      if (/Outfit_Bottom/.test(n)) m.material.color.lerp(new THREE.Color(V.armor).multiplyScalar(0.45), 0.7);
+      if (/Headwear/.test(n) && V.head) m.visible = false;
+    }
     if (!/visor/i.test(m.material.name)) mats.push(m.material);
   });
   // normalisasi tinggi
   // tinggi diukur dari tulang (kotak pembatas mesh ber-skin tidak akurat)
   model.updateMatrixWorld(true);
-  const wp = (n) => { const b = model.getObjectByName('mixamorig' + n); return b ? b.getWorldPosition(new THREE.Vector3()) : null; };
+  const wp = (n) => { const b = model.getObjectByName('mixamorig' + n) || model.getObjectByName(n); return b && b.isBone ? b.getWorldPosition(new THREE.Vector3()) : null; };
   const top = wp('HeadTop_End') || wp('Head'), foot = wp('LeftToeBase') || wp('LeftFoot');
   const hgt = top && foot ? Math.abs(top.y - foot.y) + 0.05 * Math.abs(top.y - foot.y) : 1;
-  const s = TARGET_H / (hgt || 1) * (V ? (V.h || 1) * (gender === 'female' ? 0.95 : 1) : 0.96 + (h % 7) * 0.01);
+  const s = TARGET_H / (hgt || 1) * (V ? (V.h || 1) * (gender === 'female' ? 0.95 : gender === 'man' ? 0.99 : 1) : 0.96 + (h % 7) * 0.01);
   model.scale.multiplyScalar(s); if (V?.w) { model.scale.x *= V.w; model.scale.z *= V.w; } model.updateMatrixWorld(true);
   const f2 = wp('LeftToeBase') || wp('LeftFoot'); model.position.y -= (f2 ? f2.y - 0.04 : 0); const baseY = model.position.y;
 
   const root = new THREE.Group(); const rig = new THREE.Group(); rig.add(model); root.add(rig);
-  const B = (n) => model.getObjectByName('mixamorig' + n);
+  const B = (n) => model.getObjectByName('mixamorig' + n) || model.getObjectByName(n);
   const bones = { hips: B('Hips'), spine: B('Spine1'), head: B('Head'), rArm: B('RightArm'), lArm: B('LeftArm'), rFore: B('RightForeArm'), lFore: B('LeftForeArm'), rUp: B('RightUpLeg'), lUp: B('LeftUpLeg'), rLeg: B('RightLeg'), lLeg: B('LeftLeg') };
 
   // simpan rotasi dasar tulang yang kita ubah, supaya pose tambahan tidak menumpuk tiap frame
@@ -127,7 +135,8 @@ export function createReal(o = {}) {
     const hp = headB && headB.getWorldPosition(new THREE.Vector3()), tp = topB && topB.getWorldPosition(new THREE.Vector3());
     const top = hp && tp ? tp.y - hp.y : 0.2;
     const ha = anchor(headB, true); if (ha) ha.add(headPiece(V, top * (gender === 'male' ? 0.92 : 0.95), gender === 'male'));
-    const ba = anchor(B('Spine2'), true); if (ba) ba.add(backPiece(V, o.uTime || { value: 0 }, h % 10, gender === 'male'));
+    // jubah punggung hanya untuk wanita (di model pria posisinya tidak pas)
+    const ba = anchor(B('Spine2'), true); if (ba) ba.add(backPiece(gender === 'female' ? V : { ...V, cape: undefined }, o.uTime || { value: 0 }, h % 10, gender !== 'female'));
     const wa = anchor(B('RightHand'), false);
     if (wa && V.weapon) {
       weapon = weaponPiece(V); wa.add(weapon);

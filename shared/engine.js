@@ -83,7 +83,8 @@ export class Game {
       const p = this.players.get(id); p.connected = true; if (name) p.name = clean(name, 16) || p.name;
       return { ok: true, rejoin: true };
     }
-    if (this.phase !== 'lobby') return { ok: false, error: 'Game sudah berjalan. Tunggu ronde berikutnya.' };
+    // boleh masuk saat lobby atau saat game baru selesai (ikut ronde berikutnya)
+    if (this.phase !== 'lobby' && this.phase !== 'end') return { ok: false, error: 'Game sudah berjalan. Tunggu ronde berikutnya.' };
     if (this.seated.length >= MAX_PLAYERS && id !== this.modId) return { ok: false, error: 'Room penuh (maks 16 pemain).' };
     let nm = clean(name, 16) || 'Warga';
     const names = new Set([...this.players.values()].map((p) => p.name.toLowerCase()));

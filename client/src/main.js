@@ -82,10 +82,10 @@ async function refreshRooms() {
 function renderRooms(rooms) {
   const el = $('roomList');
   el.innerHTML = rooms && rooms.length ? rooms.map((r) => `
-    <div class="room ${r.phase === 'lobby' ? '' : 'busy'}"><div class="crest" aria-hidden="true">${r.phase === 'lobby' ? '🏡' : '🔥'}</div><div class="info"><b>${esc(r.name)}</b>${r.hasMod ? ' <span class="tag mod">Mod</span>' : ''}
+    <div class="room ${r.phase === 'lobby' || r.phase === 'end' ? '' : 'busy'}"><div class="crest" aria-hidden="true">${r.phase === 'lobby' ? '🏡' : r.phase === 'end' ? '🏁' : '🔥'}</div><div class="info"><b>${esc(r.name)}</b>${r.hasMod ? ' <span class="tag mod">Mod</span>' : ''}
       <small>${r.host ? 'Host ' + esc(r.host) + ' · ' : ''}${r.players}/16 pemain · ${esc(r.phaseName)}${r.day ? ' H-' + r.day : ''} · <span class="code">${esc(r.code)}</span></small>
-      <span class="tag ${r.phase === 'lobby' ? '' : 'play'}">${r.phase === 'lobby' ? 'Lobby' : 'Sedang main'}</span></div>
-      <button class="b-green" data-join="${esc(r.code)}" ${r.phase === 'lobby' ? '' : 'disabled'}>Gabung</button></div>`).join('')
+      <span class="tag ${r.phase === 'lobby' || r.phase === 'end' ? '' : 'play'}">${r.phase === 'lobby' ? 'Lobby' : r.phase === 'end' ? 'Selesai · bisa gabung' : 'Sedang main'}</span></div>
+      <button class="b-green" data-join="${esc(r.code)}" ${r.phase === 'lobby' || r.phase === 'end' ? '' : 'disabled'}>Gabung</button></div>`).join('')
     : '<div class="empty">Belum ada room aktif. Buat room baru — room-mu akan langsung muncul di sini untuk semua pemain.</div>';
   el.querySelectorAll('[data-join]').forEach((b) => (b.onclick = () => join(b.dataset.join)));
 }
