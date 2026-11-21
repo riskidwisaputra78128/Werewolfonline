@@ -19,4 +19,7 @@ fs.mkdirSync(path.join(out, 'web'), { recursive: true });
 fs.mkdirSync(path.join(out, 'apps-script'), { recursive: true });
 fs.writeFileSync(path.join(out, 'web/index.html'), html);
 fs.writeFileSync(path.join(out, 'apps-script/index.html'), html);
+// file model 3D (GLB) disalin di samping index.html untuk Vercel/Netlify/Pages (Apps Script tidak mendukung → pakai karakter bawaan)
+const models = path.join(root, 'client/dist-static/models');
+if (fs.existsSync(models)) { fs.cpSync(models, path.join(out, 'web/models'), { recursive: true }); console.log('OK deploy/web/models'); }
 console.log('OK deploy/web/index.html & deploy/apps-script/index.html', (html.length / 1024).toFixed(0) + ' KB');

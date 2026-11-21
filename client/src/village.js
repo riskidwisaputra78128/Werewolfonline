@@ -12,6 +12,7 @@ import * as T from './textures.js';
 import { createBiped, clothMat, makePlayerWerewolf, makeElder } from './characters.js';
 import { FX, gradePass } from './effects.js';
 import { createHero, upgradeWolf } from './heroes.js';
+import { loadHumans, createReal, humansReady } from './realhumans.js';
 const ease = (t) => t * t * (3 - 2 * t);
 const seg = (t, a, b) => Math.max(0, Math.min(1, (t - a) / (b - a)));
 
@@ -60,6 +61,8 @@ export class Village {
     this.fx = new FX(this); this.fx.ambience(heightAt);
     this.podiumAt = new THREE.Vector3(0, heightAt(0, 0), 0); this.fireOn = 1; this.fx.buildPodium(this.podiumAt);
     this.fx.warmup();
+    // model manusia realistis (GLB) dimuat di latar; begitu siap, avatar diganti
+    loadHumans().then((lib) => { if (lib) this.swapRigs(); });
     this.podiumIds = [];
     this.modRig = createHero({ color: '#ffe2a0', seed: 'moderator', style: 'angel', uTime: this.uTime }); this.modRig.root.visible = false; this.scene.add(this.modRig.root);
 
@@ -262,7 +265,7 @@ export class Village {
     seated.forEach((p, i) => {
       let a = this.avatars.get(p.id);
       if (!a) {
-        const rig = createHero({ color: p.color, seed: p.id + p.name, uTime: this.uTime });
+        const rig = (humansReady() && createReal({ color: p.color, seed: p.id + p.name, uTime: this.uTime })) || createHero({ color: p.color, seed: p.id + p.name, uTime: this.uTime });
         const root = new THREE.Group(); root.add(rig.root);
         const ringMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false });
         const ring = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.75, 32), ringMat); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.05; root.add(ring);
@@ -307,6 +310,20 @@ export class Village {
     // moderator berdiri di dekat api
     this.modRig.root.visible = !!mod;
     if (mod) { this.modRig.root.position.set(0, heightAt(0, 2.6), 2.6); this.modRig.root.rotation.y = Math.PI; this.modId = mod.id; this.modName = mod.name; }
+  }
+  /** Ganti semua avatar (dan moderator) ke model realistis setelah selesai dimuat */
+  swapRigs() {
+    for (const a of this.avatars.values()) {
+      if (a.rig.kind === 'real') continue;
+      const nr = createReal({ color: a.p.color, seed: a.p.id + a.p.name, uTime: this.uTime }); if (!nr) return;
+      const old = a.rig.root;
+      nr.root.rotation.copy(old.rotation); nr.root.position.copy(old.position);
+      nr.root.visible = old.visible && !a.wolf;
+      a.root.remove(old); a.root.add(nr.root); a.rig = nr;
+      a.rig.setDead?.(!a.p.alive);
+    }
+    const m = createReal({ color: '#ffe2a0', seed: 'moderator', gender: 'female', halo: true, uTime: this.uTime });
+    if (m) { m.root.position.copy(this.modRig.root.position); m.root.rotation.copy(this.modRig.root.rotation); m.root.visible = this.modRig.root.visible; this.scene.remove(this.modRig.root); this.scene.add(m.root); this.modRig = m; }
   }
   makeGrave(a, instant) {
     a.grave = new THREE.Group();
@@ -439,14 +456,14 @@ export class Village {
       else if (!p.alive && !a.pending && a.deadPose) { a.rig.root.rotation.x = a.deadPose.x; a.rig.root.rotation.z = a.deadPose.z; a.rig.root.position.y = a.deadPose.y; }
       if (a.grave && a.graveT < 1) { a.graveT = Math.min(1, a.graveT + dt * 1.5); a.grave.scale.y = Math.max(0.001, ease(a.graveT)); }
       if (a.wolf) { a.wolf.update(dt, 0, { howl: a.wolfT > 0 ? a.wolfT : 0 }); if (a.wolfT > 0) { a.wolfT += dt * 0.4; if (a.wolfT > 1) a.wolfT = 0; } }
-      else if (a.onPodium) a.rig.update(dt, 0, { attack: a.cheer < 1 ? a.cheer : 0, attackArm: a.rank % 2 });
+      else if (a.onPodium) a.rig.update(dt, 0, { attack: a.cheer < 1 ? a.cheer : 0, attackArm: a.rank % 2, dance: true });
       else if (standing && !a.death) a.rig.update(dt, 0, { attack: a.waveT > 0 ? a.waveT : 0 });
       const showRing = deco.ring || (this.hoverId === id && deco.selectable);
       a.ring.material.opacity += ((showRing ? 0.9 : 0) - a.ring.material.opacity) * Math.min(1, dt * 10);
       if (deco.ring) a.ring.material.color.set(deco.ring); else if (this.hoverId === id) a.ring.material.color.set(0xffffff);
       a.ring.scale.setScalar(1 + (deco.ring ? Math.sin(t * 4) * 0.06 : 0));
       // label DOM
-      v.copy(a.root.position); v.y += (p.alive || a.onPodium || a.pending) ? (a.wolf ? 3.3 : 2.6) : a.death ? 2.6 : 1.2; v.project(this.camera);
+      v.copy(a.root.position); const lh = a.rig.kind === 'real' ? 2.45 : 2.6; v.y += (p.alive || a.onPodium || a.pending) ? (a.wolf ? 3.3 : lh) : a.death ? lh : 1.2; v.project(this.camera);
       const off = v.z > 1 || !a.root.visible;
       a.label.style.display = off ? 'none' : '';
       if (!off) {
