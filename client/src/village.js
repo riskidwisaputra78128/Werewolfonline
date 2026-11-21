@@ -11,6 +11,7 @@ import { fbm, simplex2, mulberry32, smoothstep, lerp } from './noise.js';
 import * as T from './textures.js';
 import { createBiped, clothMat, makePlayerWerewolf, makeElder } from './characters.js';
 import { FX, gradePass } from './effects.js';
+import { createHero, upgradeWolf } from './heroes.js';
 const ease = (t) => t * t * (3 - 2 * t);
 const seg = (t, a, b) => Math.max(0, Math.min(1, (t - a) / (b - a)));
 
@@ -58,8 +59,9 @@ export class Village {
     this.buildLights(); this.buildSky(); this.buildGround(); this.buildForest(); this.buildGrass(); this.buildHouses(); this.buildFire(); this.buildFireflies();
     this.fx = new FX(this); this.fx.ambience(heightAt);
     this.podiumAt = new THREE.Vector3(0, heightAt(0, 0), 0); this.fireOn = 1; this.fx.buildPodium(this.podiumAt);
+    this.fx.warmup();
     this.podiumIds = [];
-    this.modRig = makeElder(); this.modRig.root.visible = false; this.scene.add(this.modRig.root);
+    this.modRig = createHero({ color: '#ffe2a0', seed: 'moderator', style: 'angel', uTime: this.uTime }); this.modRig.root.visible = false; this.scene.add(this.modRig.root);
 
     addEventListener('resize', () => this.resize());
     let down = null;
@@ -260,8 +262,7 @@ export class Village {
     seated.forEach((p, i) => {
       let a = this.avatars.get(p.id);
       if (!a) {
-        const rgb = hexToRgb(p.color);
-        const rig = createBiped({ body: clothMat(rgb), pants: clothMat([45, 40, 36]), hood: clothMat(rgb.map((v) => v * 0.7)), boots: new THREE.MeshStandardMaterial({ color: 0x2a1c14 }) });
+        const rig = createHero({ color: p.color, seed: p.id + p.name, uTime: this.uTime });
         const root = new THREE.Group(); root.add(rig.root);
         const ringMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false });
         const ring = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.75, 32), ringMat); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.05; root.add(ring);
@@ -294,7 +295,7 @@ export class Village {
       a.wasAlive = p.alive;
       // werewolf terungkap di akhir game
       const showWolf = opts.reveal && p.role === 'werewolf';
-      if (showWolf && !a.wolf) { a.wolf = makePlayerWerewolf(); a.root.add(a.wolf.root); a.rig.root.visible = false; a.wolfT = 0; }
+      if (showWolf && !a.wolf) { a.wolf = upgradeWolf(makePlayerWerewolf(), this.uTime); a.root.add(a.wolf.root); a.rig.root.visible = false; a.wolfT = 0; }
       if (!showWolf && a.wolf) { a.root.remove(a.wolf.root); a.wolf = null; a.rig.root.visible = true; }
       if (!p.alive && !a.grave && !a.pending && !a.death) this.makeGrave(a, true);
       // jasad di sisi kamera disembunyikan saat podium supaya tidak menghalangi
@@ -362,6 +363,7 @@ export class Village {
         break;
       }
       case 'hunter': { const k = seg(t, 0.55, 0.95); rx = -Math.PI / 2 * (ease(k) + Math.sin(k * Math.PI) * 0.12); y = 0.15 * k; break; }
+      case 'sniper': { const k = seg(t, 1.05, 1.4); crouch = t < 1.05 ? seg(t, 0.2, 0.6) * 0.05 : 0; rx = -Math.PI / 2 * (ease(k) + Math.sin(k * Math.PI) * 0.15); y = 0.15 * k; opts.aim = false; break; }
       case 'guard': crouch = ease(seg(t, 0.9, 1.6)) * 0.35; rz = Math.PI / 2 * ease(seg(t, 1.6, 2.2)); y = 0.15 * seg(t, 1.6, 2.2); opts.aim = t < 0.9; break;
       default: rx = -Math.PI / 2 * ease(seg(t, 0, 0.7)); y = 0.15 * seg(t, 0, 0.7);
     }
@@ -428,6 +430,7 @@ export class Village {
       const p = a.p, deco = this.deco?.[id] || {};
       a.root.position.lerp(a.target, Math.min(1, dt * 3));
       const standing = p.alive || a.pending || a.onPodium;
+      a.rig.setDead?.(!standing && !a.death);
       if (a.onPodium) {
         a.rig.root.rotation.set(0, 0, 0); a.rig.root.position.y = 0;
         a.cheer = ((a.cheer || a.rank * 0.4) + dt * 0.7) % 1.6; // perayaan bergantian
@@ -443,7 +446,7 @@ export class Village {
       if (deco.ring) a.ring.material.color.set(deco.ring); else if (this.hoverId === id) a.ring.material.color.set(0xffffff);
       a.ring.scale.setScalar(1 + (deco.ring ? Math.sin(t * 4) * 0.06 : 0));
       // label DOM
-      v.copy(a.root.position); v.y += (p.alive || a.onPodium || a.pending) ? (a.wolf ? 3.3 : 2.35) : a.death ? 2.35 : 1.2; v.project(this.camera);
+      v.copy(a.root.position); v.y += (p.alive || a.onPodium || a.pending) ? (a.wolf ? 3.3 : 2.6) : a.death ? 2.6 : 1.2; v.project(this.camera);
       const off = v.z > 1 || !a.root.visible;
       a.label.style.display = off ? 'none' : '';
       if (!off) {

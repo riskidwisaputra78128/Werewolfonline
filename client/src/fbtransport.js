@@ -46,7 +46,6 @@ export class FirebaseTransport extends Emitter {
     this.unsubs = [];
   }
   r(path) { return ref(database(), `ww/rooms/${this.code}${path ? '/' + path : ''}`); }
-  lobbyRef() { return ref(database(), `${LOBBY}/${this.code}`); }
   listen(unsub) { this.unsubs.push(unsub); }
 
   // ================= HOST =================
@@ -60,11 +59,9 @@ export class FirebaseTransport extends Emitter {
         if (!exists) break;
         if (i > 5) throw new Error('kode penuh');
       }
-      await set(this.r('meta'), { host: this.sid, name: String(opts.roomName || '').slice(0, 40), hostOnline: true, t: serverTimestamp() });
+      await set(this.r('meta'), { host: this.sid, name: String(opts.roomName || '').slice(0, 40), hostOnline: true, t: serverTimestamp(), beat: serverTimestamp() });
       // kalau host menutup tab / internet putus, tandai offline (pemain menunggu sebentar)
       await onDisconnect(this.r('meta/hostOnline')).set(false);
-      // daftar room publik: langsung hilang saat host menutup tab / putus
-      await onDisconnect(this.lobbyRef()).remove().catch(() => {});
       cleanupOldRooms();
     } catch (e) {
       console.error(e); this.role = null;
@@ -74,7 +71,7 @@ export class FirebaseTransport extends Emitter {
     this.game = new Game({ code: this.code, name: opts.roomName, hostId: this.sid, hostName: name, hostIsMod: !!opts.hostIsMod, isPublic: opts.isPublic !== false, onChange: () => this.schedule() });
     this.lastListing = '';
     // detak jantung: room yang host-nya hilang tanpa sempat dihapus akan disaring & dibersihkan
-    this.beat = setInterval(() => { if (this.game?.isPublic) update(this.lobbyRef(), { t: serverTimestamp() }).catch(() => {}); }, 60000);
+    this.beat = setInterval(() => { if (this.game) update(this.r('meta'), { beat: serverTimestamp() }).catch(() => {}); }, 60000);
 
     this.listen(onChildAdded(this.r('cmd'), (snap) => { this.onCmd(snap.val()); remove(snap.ref).catch(() => {}); }));
     this.listen(onChildAdded(this.r('presence'), (snap) => this.onPresence(snap.key, true)));
@@ -149,17 +146,16 @@ export class FirebaseTransport extends Emitter {
     }, 30);
   }
 
-  /** Tulis ringkasan room ke ww/lobby supaya tampil di halaman awal semua pemain */
+  /** Tulis ringkasan room ke meta room supaya tampil di halaman awal semua pemain */
   publishListing(force) {
     const g = this.game; if (!g || this.role !== 'host') return;
     const sm = g.summary();
     const humans = [...g.players.values()].filter((p) => !p.isBot && p.id !== g.modId).length;
-    const item = { code: this.code, name: sm.name, host: this.hostName, players: sm.players, humans, phase: sm.phase, phaseName: sm.phaseName, day: sm.day || 0, hasMod: sm.hasMod };
-    const key = sm.isPublic ? JSON.stringify(item) : 'private';
+    const item = { name: sm.name, hostName: this.hostName, players: sm.players, humans, phase: sm.phase, phaseName: sm.phaseName, day: sm.day || 0, hasMod: sm.hasMod, pub: !!sm.isPublic };
+    const key = JSON.stringify(item);
     if (!force && key === this.lastListing) return;
     this.lastListing = key;
-    if (!sm.isPublic) { remove(this.lobbyRef()).catch(() => {}); return; }
-    set(this.lobbyRef(), { ...item, t: serverTimestamp() }).catch((e) => console.warn('[fb] gagal update daftar room', e));
+    update(this.r('meta'), { ...item, beat: serverTimestamp() }).catch((e) => console.warn('[fb] gagal update daftar room', e));
   }
 
   watchConnection() {
@@ -179,7 +175,6 @@ export class FirebaseTransport extends Emitter {
       if (this.role === 'host') {
         await update(this.r('meta'), { hostOnline: true });
         await onDisconnect(this.r('meta/hostOnline')).set(false);
-        await onDisconnect(this.lobbyRef()).remove().catch(() => {});
         this.lastView.clear(); this.publishListing(true); this.schedule();
       } else if (this.role === 'client') {
         await set(this.r(`presence/${this.sid}`), true);
@@ -265,7 +260,6 @@ export class FirebaseTransport extends Emitter {
     clearInterval(this.beat); this.beat = null;
     if (code && role === 'host') {
       remove(this.r()).catch(() => {}); onDisconnect(this.r()).cancel().catch(() => {});
-      remove(this.lobbyRef()).catch(() => {}); onDisconnect(this.lobbyRef()).cancel().catch(() => {});
     }
     if (code && role === 'client') { remove(this.r(`presence/${this.sid}`)).catch(() => {}); onDisconnect(this.r(`presence/${this.sid}`)).cancel().catch(() => {}); }
     this.game?.destroy(); this.game = null;
@@ -276,38 +270,45 @@ export class FirebaseTransport extends Emitter {
   }
 }
 
-// daftar room disimpan di dalam ww/rooms supaya ikut rules yang sudah ada
-const LOBBY = 'ww/rooms/_lobby';
 const STALE_MS = 3 * 60e3; // tanpa detak > 3 menit = host sudah pergi
 
 /**
- * Pantau daftar room aktif (realtime). cb(rooms) dipanggil setiap ada perubahan.
- * Room yang host-nya sudah pergi / kosong tidak ditampilkan dan langsung dibersihkan.
+ * Pantau daftar room aktif. Membaca daftar kode lewat REST "shallow" (hanya kunci, sangat ringan),
+ * lalu meta tiap room. Room yang host-nya keluar / room kosong tidak ditampilkan dan dibersihkan.
  * @returns fungsi untuk berhenti memantau
  */
 export function watchRooms(cb) {
-  let offset = 0, last = null, stopped = false;
-  const offUnsub = onValue(ref(database(), '.info/serverTimeOffset'), (s) => { offset = s.val() || 0; if (last) emit(last); });
-  const emit = (val) => {
-    const now = Date.now() + offset, rooms = [];
-    for (const [code, r] of Object.entries(val || {})) {
-      const fresh = r && typeof r.t === 'number' && now - r.t < STALE_MS;
-      if (!fresh || !r.players) {
-        if (r && typeof r.t === 'number') { // sisa room yatim: hapus dari daftar & database
-          remove(ref(database(), `${LOBBY}/${code}`)).catch(() => {});
-          remove(ref(database(), `ww/rooms/${code}`)).catch(() => {});
+  let offset = 0, stopped = false, timer = null, busy = false;
+  const offUnsub = onValue(ref(database(), '.info/serverTimeOffset'), (s) => { offset = s.val() || 0; });
+  const base = String(window.WW_FIREBASE.databaseURL).replace(/\/$/, '');
+  const getJSON = async (path, q = '') => { const r = await fetch(`${base}/${path}.json${q}`, { cache: 'no-store' }); if (!r.ok) throw Object.assign(new Error('HTTP ' + r.status), { code: r.status === 401 ? 'PERMISSION_DENIED' : 'http' }); return r.json(); };
+  const poll = async () => {
+    if (stopped || busy) return; busy = true;
+    try {
+      const keys = Object.keys((await getJSON('ww/rooms', '?shallow=true')) || {}).filter((k) => /^[A-Z0-9]{6}$/.test(k));
+      const metas = await Promise.all(keys.map((k) => getJSON(`ww/rooms/${k}/meta`).catch(() => null)));
+      const now = Date.now() + offset, rooms = [];
+      keys.forEach((code, i) => {
+        const m = metas[i];
+        const last = m ? (m.beat || m.t || 0) : 0;
+        // m.beat ada = versi baru (detak tiap menit); tanpa beat cukup andalkan hostOnline + umur 6 jam
+        const fresh = m && (m.beat ? now - m.beat < STALE_MS : now - (m.t || 0) < 6 * 3600e3);
+        const alive = m && m.hostOnline !== false && fresh;
+        if (!alive) { // host sudah pergi: bersihkan room yatim (beri waktu host menyambung ulang)
+          if (!m || now - last > STALE_MS) remove(ref(database(), `ww/rooms/${code}`)).catch(() => {});
+          return;
         }
-        continue;
-      }
-      rooms.push({ ...r, code });
-    }
-    rooms.sort((a, b) => (a.phase === 'lobby' ? 0 : 1) - (b.phase === 'lobby' ? 0 : 1) || b.t - a.t);
-    if (!stopped) cb(rooms);
+        if (m.pub === false || m.players === 0) return;
+        rooms.push({ code, name: m.name || 'Desa ' + code, host: m.hostName, players: m.players ?? '?', humans: m.humans, phase: m.phase || 'lobby', phaseName: m.phaseName || 'Lobby', day: m.day || 0, hasMod: !!m.hasMod, t: last });
+      });
+      rooms.sort((a, b) => (a.phase === 'lobby' ? 0 : 1) - (b.phase === 'lobby' ? 0 : 1) || b.t - a.t);
+      if (!stopped) cb(rooms);
+    } catch (e) { console.warn('[fb] daftar room', e); if (!stopped) cb(null, fbError(e)); }
+    busy = false;
+    if (!stopped) timer = setTimeout(poll, document.hidden ? 15000 : 5000);
   };
-  const unsub = onValue(ref(database(), LOBBY), (s) => { last = s.val() || {}; emit(last); },
-    (e) => { console.warn('[fb] daftar room', e); if (!stopped) cb(null, fbError(e)); });
-  const tick = setInterval(() => { if (last) emit(last); }, 30000);
-  return () => { stopped = true; unsub(); offUnsub(); clearInterval(tick); };
+  poll();
+  return () => { stopped = true; clearTimeout(timer); offUnsub(); };
 }
 
 /** Hapus room lama (host-nya sudah lama pergi) supaya database tetap bersih */
@@ -315,7 +316,7 @@ async function cleanupOldRooms() {
   try {
     const q = query(ref(database(), 'ww/rooms'), orderByChild('meta/t'), endAt(Date.now() - 6 * 3600e3), limitToFirst(20));
     const snap = await get(q);
-    snap.forEach((c) => { if (c.key !== '_lobby') remove(c.ref).catch(() => {}); });
+    snap.forEach((c) => { remove(c.ref).catch(() => {}); });
   } catch { /* */ }
 }
 

@@ -209,6 +209,7 @@ function decorate() {
     if (v.night.target && d[v.night.target]) d[v.night.target].ring = '#ef4444';
     if (v.night.choice && d[v.night.choice]) d[v.night.choice].ring = '#38bdf8';
     if (v.night.poison && d[v.night.poison]) d[v.night.poison].ring = '#a855f7';
+    if (mine?.role === 'hunter' && v.night.choice && d[v.night.choice]) d[v.night.choice].ring = '#ff2020';
   }
   if (mine?.notes) for (const n of mine.notes) if (d[n.target]) d[n.target].badge = n.wolf ? '🐺 !' : '✓ warga';
   if (v.phase === 'end' && v.podium) v.podium.filter((r) => r.winner).slice(0, 3).forEach((r, i) => { if (d[r.id]) d[r.id].badge = ['🥇', '🥈', '🥉'][i] + ' ' + r.score; });
@@ -257,7 +258,7 @@ function renderDock() {
         const nm = (id) => (id ? esc(P(id)?.name) : '—');
         body = `<div class="notes">
           <div>🐺 Target serigala: <b>${nm(mn.wolfTarget)}</b></div>
-          <div>🩺 Dilindungi Doctor: ${nm(mn.protect)} · 🛡️ Dikawal Guardian: ${nm(mn.guard)}</div>
+          <div>🩺 Dilindungi Doctor: ${nm(mn.protect)} · 🛡️ Dikawal Guardian: ${nm(mn.guard)} · 🎯 Bidikan Sniper: ${nm(mn.snipe)}</div>
           <div>🔮 Terawang Seer: ${Object.values(mn.see || {}).map(nm).join(', ') || '—'} · 🧪 Heal: ${mn.heal ? 'ya' : 'tidak'} · Racun: ${nm(mn.poison)}</div>
           <div>Sudah beraksi: ${(mn.done || []).length}/${(mn.actors || []).length}</div></div>`;
         break;
@@ -283,6 +284,11 @@ function renderDock() {
         title = '🛡️ Kawal satu warga';
         hint = 'Jika warga ini diserang serigala, kamu yang gugur menggantikannya.';
         body = targetButtons(others, (id) => send('act', { target: id }), n.choice); after = (e) => bindTargets(e, (id) => send('act', { target: id }));
+      } else if (r === 'hunter') {
+        title = '🎯 Bidik dengan sniper';
+        hint = n.choice ? `Membidik <b>${esc(P(n.choice)?.name)}</b>. Sentuh lagi untuk batal.` : n.done ? 'Kamu memilih tidak menembak malam ini.' : 'Pilih target, atau tahan tembakan malam ini. Tembakanmu datang dari kegelapan — identitasmu tetap rahasia.';
+        body = targetButtons(others, (id) => send('act', { target: id }), n.choice) + `<div class="row"><button id="hSkipN" class="${n.done && !n.choice ? 'b-violet' : ''}">🙅 Tidak menembak</button></div>`;
+        after = (e) => { bindTargets(e, (id) => send('act', { target: id })); e.querySelector('#hSkipN').onclick = () => send('act', { type: 'skip' }); };
       } else if (r === 'witch') {
         title = '🧪 Ramuan Witcher';
         const victim = n.victim ? P(n.victim) : null;

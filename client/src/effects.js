@@ -7,6 +7,11 @@ const canvas = (w, h = w) => { const c = document.createElement('canvas'); c.wid
 const ease = (t) => t * t * (3 - 2 * t);
 const clamp01 = (t) => Math.max(0, Math.min(1, t));
 const seg = (t, a, b) => clamp01((t - a) / (b - a));
+function rod(a, b, r, mat) {
+  const d = b.clone().sub(a), m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, d.length(), 5), mat);
+  m.position.copy(a).add(b).multiplyScalar(0.5); m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize());
+  return m;
+}
 
 // ---------------------------------------------------------------- tekstur
 const spriteCache = {};
@@ -33,6 +38,7 @@ function smokeTex() {
 
 /** Lingkaran sihir bergaya rune (heksagram, cincin glyph, garis radial) */
 export function runeCircleTexture(rgb = '255,70,55', size = 1024, seed = 7) {
+  const ck = `rune${rgb}|${size}|${seed}`; if (spriteCache[ck]) return spriteCache[ck];
   const [c, x] = canvas(size), m = size / 2;
   let s = seed; const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
   x.translate(m, m);
@@ -62,7 +68,7 @@ export function runeCircleTexture(rgb = '255,70,55', size = 1024, seed = 7) {
   x.beginPath(); x.arc(m * 0.06, 0, m * 0.15, Math.PI * 0.5, Math.PI * 1.5, true); stroke(3, 1);
   for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; x.beginPath(); x.moveTo(Math.cos(a) * m * 0.38, Math.sin(a) * m * 0.38); x.lineTo(Math.cos(a) * m * 0.66, Math.sin(a) * m * 0.66); stroke(1.4, 0.6); }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
-  return t;
+  return (spriteCache[ck] = t);
 }
 
 function clawTex() {
@@ -79,6 +85,7 @@ function clawTex() {
   return (spriteCache.claw = t);
 }
 function pillarTex(rgb) {
+  if (spriteCache['pillar' + rgb]) return spriteCache['pillar' + rgb];
   // garis-garis energi vertikal yang memudar ke atas
   const [c, x] = canvas(128, 256);
   for (let i = 0; i < 128; i++) {
@@ -90,7 +97,7 @@ function pillarTex(rgb) {
   const b = x.createLinearGradient(0, 256, 0, 180); b.addColorStop(0, `rgba(255,220,200,.6)`); b.addColorStop(1, `rgba(${rgb},0)`);
   x.fillStyle = b; x.fillRect(0, 180, 128, 76);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
-  return t;
+  return (spriteCache['pillar' + rgb] = t);
 }
 function numeralTex(txt) {
   const [c, x] = canvas(256, 128);
@@ -166,12 +173,19 @@ export function gradePass() {
 export class FX {
   constructor(village) {
     this.v = village; this.scene = village.scene; this.list = [];
+    // Kumpulan lampu tetap: menambah/menghapus lampu saat main memaksa SEMUA shader dikompilasi ulang (lag beberapa detik)
+    this.pool = Array.from({ length: 4 }, () => { const l = new THREE.PointLight(0xffffff, 0, 14, 1.6); l.userData.busy = false; this.scene.add(l); return l; });
   }
+  acquire(color, pos, dist = 14) {
+    const l = this.pool.find((x) => !x.userData.busy); if (!l) return null;
+    l.userData.busy = true; l.color.set(color); l.position.copy(pos); l.distance = dist; l.intensity = 0; return l;
+  }
+  release(l) { if (l) { l.intensity = 0; l.userData.busy = false; } }
   add(e) { this.list.push(e); return e; }
   burst(o) { return this.add(new Burst(this.scene, o)); }
   light(pos, color, peak, dur, dist = 14) {
-    const l = new THREE.PointLight(color, 0, dist, 1.6); l.position.copy(pos); this.scene.add(l);
-    return this.add(new Timed((t) => { l.intensity = peak * Math.sin(Math.min(1, t / dur) * Math.PI); return t < dur; }, () => this.scene.remove(l)));
+    const l = this.acquire(color, pos, dist); if (!l) return null;
+    return this.add(new Timed((t) => { l.intensity = peak * Math.sin(Math.min(1, t / dur) * Math.PI); return t < dur; }, () => this.release(l)));
   }
   update(dt) {
     this.list = this.list.filter((e) => { const ok = e.update(dt); if (!ok) e.dispose(); return ok; });
@@ -222,6 +236,31 @@ export class FX {
     mp.needsUpdate = true; this.motes.material.opacity = 0.15 + night * 0.75;
   }
 
+  /** Panaskan shader & tekstur efek saat game dimuat, supaya animasi pertama tidak tersendat */
+  warmup() {
+    const tmp = new THREE.Group(); tmp.position.set(0, -50, 0);
+    const w = makePlayerWerewolf();
+    w.root.traverse((o) => { if (o.isMesh) { o.material = o.material.clone(); o.material.transparent = true; o.material.opacity = 0.5; } });
+    tmp.add(w.root);
+    const add = (m) => tmp.add(m);
+    for (const b of [THREE.AdditiveBlending, THREE.NormalBlending]) for (const map of [glow('255,80,60'), smokeTex()]) {
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(3), 3));
+      const pm = new THREE.PointsMaterial({ map, size: 0.3, transparent: true, depthWrite: false, blending: b }); if (map !== glow('255,80,60')) pm.color.set('rgb(80,255,120)');
+      add(new THREE.Points(g, pm));
+    }
+    add(new THREE.Sprite(new THREE.SpriteMaterial({ map: clawTex(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })));
+    add(new THREE.Mesh(new THREE.CircleGeometry(1, 8), new THREE.MeshBasicMaterial({ map: runeCircleTexture('255,60,40', 512, 13), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })));
+    add(new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 8, 1, true), new THREE.MeshBasicMaterial({ map: pillarTex('255,50,40'), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide })));
+    add(new THREE.Mesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshStandardMaterial({ color: 0xffd27a, emissive: 0xffb340, transparent: true, wireframe: true })));
+    add(new THREE.Mesh(new THREE.TetrahedronGeometry(0.1), new THREE.MeshStandardMaterial({ color: 0xffe2a0, emissive: 0xffb340, transparent: true })));
+    add(new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.2, 6), new THREE.MeshStandardMaterial({ color: 0xddddee, metalness: 0.9, roughness: 0.2, emissive: 0xffcc66 })));
+    add(new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1, 5), new THREE.MeshBasicMaterial({ color: 0xff1a1a, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })));
+    this.scene.add(tmp);
+    try { this.v.renderer.compile(this.scene, this.v.camera); } catch { /* */ }
+    // render satu frame agar tekstur ikut terunggah ke GPU, lalu buang
+    requestAnimationFrame(() => requestAnimationFrame(() => this.scene.remove(tmp)));
+  }
+
   // ------------------------------------------------------------ animasi kematian
   /**
    * kind: wolf | vote | poison | hunter | guard | left | other
@@ -231,7 +270,7 @@ export class FX {
   death(kind, a, from) {
     const v = this.v, at = a.root.position.clone(), chest = at.clone().setY(at.y + 1.3);
     const out = at.clone().setY(0).normalize(); if (!out.lengthSq()) out.set(0, 0, 1);
-    const anim = { kind, t: 0, dur: { wolf: 3.2, vote: 3.6, poison: 3.2, hunter: 2.4, guard: 3.0 }[kind] || 2 };
+    const anim = { kind, t: 0, dur: { wolf: 3.2, vote: 3.6, poison: 3.2, hunter: 2.4, guard: 3.0, sniper: 2.8 }[kind] || 2 };
     v.flashRed(kind === 'wolf' || kind === 'vote' ? 0.6 : 0.35);
     switch (kind) {
       case 'wolf': {
@@ -243,11 +282,11 @@ export class FX {
         if (side.dot(out) < 0) side.negate();
         const start = at.clone().addScaledVector(side, 4.5).addScaledVector(view, 1.2), end = at.clone().addScaledVector(side, 1.0).addScaledVector(view, 0.3);
         w.root.position.copy(start); w.root.lookAt(at.x, w.root.position.y, at.z); this.scene.add(w.root);
-        const eyes = new THREE.PointLight(0xff2a1a, 0, 6, 2); w.root.add(eyes); eyes.position.set(0, 2.4, 0.4);
+        const eyes = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow('255,40,30'), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 })); eyes.scale.setScalar(0.9); w.root.add(eyes); eyes.position.set(0, 2.4, 0.4);
         this.add(new Timed((t, dt) => {
           const fade = seg(t, 0, 0.5) * (1 - seg(t, 2.2, 2.9));
           w.root.traverse((o) => { if (o.isMesh) o.material.opacity = fade; });
-          eyes.intensity = fade * 6;
+          eyes.material.opacity = fade;
           const k = ease(seg(t, 0.45, 0.8));
           w.root.position.lerpVectors(start, end, k); w.root.position.y = at.y + Math.sin(k * Math.PI) * 1.1 - seg(t, 2.2, 2.9) * 1.5;
           w.update(dt, k > 0 && k < 1 ? 8 : 0, { attack: seg(t, 0.6, 1.1) > 0 && seg(t, 0.6, 1.1) < 1 ? seg(t, 0.6, 1.1) : 0, attackArm: 1, howl: seg(t, 1.3, 2.1) > 0 && seg(t, 1.3, 2.1) < 1 ? seg(t, 1.3, 2.1) : 0 });
@@ -276,14 +315,14 @@ export class FX {
         const pm = new THREE.MeshBasicMaterial({ map: pillarTex('255,50,40'), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, opacity: 0 });
         pm.map.wrapS = THREE.RepeatWrapping;
         const pil = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 1.0, 14, 40, 1, true), pm); pil.position.copy(at).setY(at.y + 7); this.scene.add(pil);
-        const lt = new THREE.PointLight(0xff3020, 0, 12, 1.5); lt.position.copy(at).setY(at.y + 1.5); this.scene.add(lt);
+        const lt = this.acquire(0xff3020, at.clone().setY(at.y + 1.5), 12);
         this.add(new Timed((t, dt) => {
           const on = seg(t, 0, 0.7) * (1 - seg(t, 2.8, 3.6));
           rm.opacity = on; circ.rotation.z += dt * (0.5 + seg(t, 0.5, 2) * 4); circ.scale.setScalar(0.6 + on * 0.6);
           pm.opacity = seg(t, 0.5, 1.2) * (1 - seg(t, 2.1, 2.6)) * 0.55; pm.map.offset.x += dt * 0.15; pil.scale.set(1, seg(t, 0.5, 1.1), 1); pil.position.y = at.y + 7 * seg(t, 0.5, 1.1);
-          lt.intensity = on * 25 + (t > 2.05 && t < 2.3 ? 60 : 0);
+          if (lt) lt.intensity = on * 25 + (t > 2.05 && t < 2.3 ? 60 : 0);
           return t < 3.6;
-        }, () => { this.scene.remove(circ, pil, lt); rm.dispose(); pm.dispose(); }));
+        }, () => { this.scene.remove(circ, pil); this.release(lt); rm.dispose(); }));
         this.burst({ at: at.clone().setY(at.y + 0.2), n: 80, rgb: '255,90,50', size: 0.16, speed: 0.6, up: 3, gravity: 0.5, life: 2.4, spread: 0.6, swirl: 3, radius: 1.2, delay: 0.6 });
         let dropped = false;
         this.add(new Timed((t) => { if (t > 2.05 && !dropped) { dropped = true; v.shake(0.25); this.burst({ at: chest, n: 60, rgb: '255,200,160', size: 0.35, speed: 4, up: 0.3, gravity: -2, life: 0.9, spread: 1.6 }); } return t < 2.5; }));
@@ -322,6 +361,34 @@ export class FX {
           }
           return t < 30;
         }, () => { arrow.parent?.remove(arrow); }));
+        break;
+      }
+      case 'sniper': {
+        // laser merah dari hutan gelap → titik bidik di dada → kilatan moncong → peluru pelacak → hantaman
+        const ang = Math.random() * Math.PI * 2, src = at.clone().add(new THREE.Vector3(Math.cos(ang) * 32, 0, Math.sin(ang) * 32)); src.y = at.y + 5;
+        const laserM = new THREE.MeshBasicMaterial({ color: 0xff1a1a, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+        const laser = rod(src, chest, 0.012, laserM); this.scene.add(laser);
+        const dot = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow('255,30,30'), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 }));
+        dot.scale.setScalar(0.25); dot.position.copy(chest).addScaledVector(src.clone().sub(chest).normalize(), 0.2); this.scene.add(dot);
+        const flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow('255,220,150'), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 }));
+        flash.scale.setScalar(3); flash.position.copy(src); this.scene.add(flash);
+        const tracerM = new THREE.MeshBasicMaterial({ color: 0xffd080, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+        const tracer = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 2.5, 5), tracerM); this.scene.add(tracer);
+        const dir = chest.clone().sub(src).normalize(); tracer.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+        let hit = false;
+        this.add(new Timed((t) => {
+          laserM.opacity = seg(t, 0, 0.25) * (t < 0.95 ? 0.75 + Math.sin(t * 40) * 0.2 : 0);
+          dot.material.opacity = laserM.opacity; dot.scale.setScalar(0.2 + Math.sin(t * 30) * 0.05);
+          flash.material.opacity = t > 0.95 && t < 1.1 ? 1 - seg(t, 0.95, 1.1) : 0;
+          const k = seg(t, 0.95, 1.05); tracerM.opacity = k > 0 && k < 1 ? 1 : 0; tracer.position.lerpVectors(src, chest, k);
+          if (k >= 1 && !hit) {
+            hit = true; v.shake(0.45); v.flashRed(0.5);
+            this.burst({ at: chest, n: 60, rgb: '190,10,10', size: 0.2, speed: 3.5, up: 0.4, gravity: -6, life: 1.3, spread: 1.3, blending: THREE.NormalBlending });
+            this.burst({ at: chest, n: 30, rgb: '255,200,120', size: 0.25, speed: 4, life: 0.5, gravity: -2, spread: 1.5 });
+            this.light(chest, 0xffaa60, 50, 0.4);
+          }
+          return t < 1.6;
+        }, () => { this.scene.remove(laser, dot, flash, tracer); laserM.dispose(); tracerM.dispose(); }));
         break;
       }
       case 'guard': {
@@ -370,16 +437,18 @@ export class FX {
     }
     const rc = new THREE.Mesh(new THREE.CircleGeometry(3.6, 64), new THREE.MeshBasicMaterial({ map: runeCircleTexture('255,200,90', 1024, 99), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.8 }));
     rc.rotation.x = -Math.PI / 2; rc.position.y = 0.04; g.add(rc); this.podiumCircle = rc;
-    const sl = new THREE.SpotLight(0xffe2b0, 260, 30, 0.6, 0.45, 1.2); sl.position.set(0, 10, 6); sl.target.position.set(0, 1, 0); g.add(sl, sl.target);
-    const warm = new THREE.PointLight(0xffb060, 25, 10, 1.6); warm.position.set(0, 1.2, 2.4); g.add(warm);
-    g.visible = false; g.scale.setScalar(0.001);
+    // lampu podium selalu ada di scene (intensitas 0 saat tersembunyi) supaya tidak memicu kompilasi ulang shader
+    const sl = new THREE.SpotLight(0xffe2b0, 0, 30, 0.6, 0.45, 1.2); sl.position.set(at.x, at.y + 10, at.z + 6); sl.target.position.set(at.x, at.y + 1, at.z); this.scene.add(sl, sl.target);
+    const warm = new THREE.PointLight(0xffb060, 0, 10, 1.6); warm.position.set(at.x, at.y + 1.2, at.z + 2.4); this.scene.add(warm);
+    this.podiumLights = [[sl, 260], [warm, 25]];
+    g.scale.setScalar(0.001);
     this.scene.add(g); this.podium = g;
     return g;
   }
   showPodium(on) {
     if (!this.podium) return;
     if (on && !this.podiumOn) {
-      this.podiumOn = true; this.podium.visible = true; this.podiumT = 0;
+      this.podiumOn = true; this.podiumT = 0;
       const top = this.spots[0].clone();
       // konfeti emas & merah + bara naik
       this.confetti = this.add(new Timed((t) => {
@@ -391,13 +460,14 @@ export class FX {
       this.burst({ at: top.clone().setY(top.y + 0.5), n: 120, rgb: '255,210,120', size: 0.3, speed: 5, up: 1.2, gravity: -3, life: 2, spread: 1.4 });
       this.light(top, 0xffd080, 80, 1);
     }
-    if (!on && this.podiumOn) { this.podiumOn = false; this.podium.visible = false; this.podium.scale.setScalar(0.001); }
+    if (!on && this.podiumOn) { this.podiumOn = false; this.podium.scale.setScalar(0.001); this.podiumLights.forEach(([l]) => (l.intensity = 0)); }
   }
   podiumUpdate(dt) {
     if (!this.podiumOn) return;
     this.podiumT += dt;
     const k = ease(Math.min(1, this.podiumT / 0.9));
     this.podium.scale.set(1, Math.max(0.001, k), 1);
+    this.podiumLights.forEach(([l, i]) => (l.intensity = i * k));
     this.podiumCircle.rotation.z += dt * 0.2;
   }
 }

@@ -6,7 +6,7 @@ export const ROLES = {
   werewolf: { name: 'Werewolf', team: 'wolf', icon: '🐺', faction: 'Faksi Serigala', desc: 'Malam hari bersama serigala lain memangsa 1 warga. Bisa chat rahasia dengan sesama serigala.' },
   seer: { name: 'Seer', team: 'village', icon: '🔮', faction: 'Faksi Warga', desc: 'Malam hari menerawang 1 warga: apakah dia Werewolf?' },
   doctor: { name: 'Doctor', team: 'village', icon: '🩺', faction: 'Faksi Warga', desc: 'Malam hari melindungi 1 warga (boleh diri sendiri) dari serangan. Tidak boleh orang yang sama 2 malam berturut-turut.' },
-  hunter: { name: 'Hunter', team: 'village', icon: '🏹', faction: 'Faksi Warga', desc: 'Saat mati (dimangsa atau dieksekusi), langsung menembakkan panah terakhir ke 1 pemain.' },
+  hunter: { name: 'Hunter', team: 'village', icon: '🎯', faction: 'Faksi Warga', desc: 'Sniper desa: setiap malam boleh menembak 1 pemain dari kegelapan (boleh juga tidak menembak). Tembakan bisa digagalkan perlindungan Doctor.' },
   judge: { name: 'Hakim', team: 'village', icon: '⚖️', faction: 'Faksi Warga', desc: 'Memiliki bobot suara ganda saat voting siang.' },
   guardian: { name: 'Guardian', team: 'village', icon: '🛡️', faction: 'Faksi Warga', desc: 'Mengawal 1 warga tiap malam. Jika warga itu diserang, Guardian yang gugur menggantikannya.' },
   witch: { name: 'Witcher', team: 'village', icon: '🧪', faction: 'Faksi Warga', desc: 'Punya 1 ramuan penyembuh (selamatkan korban malam ini) dan 1 ramuan racun (bunuh 1 pemain). Masing-masing sekali per game.' },
@@ -14,7 +14,7 @@ export const ROLES = {
   moderator: { name: 'Moderator', team: 'none', icon: '🎙️', faction: 'Pemandu Desa', desc: 'Memandu permainan, melihat semua peran & aksi, mengatur fase, dan bisa mengeluarkan pemain.' },
 };
 export const SPECIALS = ['seer', 'doctor', 'hunter', 'judge', 'guardian', 'witch'];
-export const NIGHT_ROLES = ['werewolf', 'seer', 'doctor', 'guardian', 'witch'];
+export const NIGHT_ROLES = ['werewolf', 'seer', 'doctor', 'guardian', 'witch', 'hunter'];
 
 export const PHASES = {
   lobby: 'Lobby', reveal: 'Pembagian Peran', night: 'Malam', dawn: 'Fajar', day: 'Diskusi Siang',
@@ -26,7 +26,7 @@ export const COLORS = ['#c0392b', '#2980b9', '#27ae60', '#8e44ad', '#d35400', '#
 
 const MAX_PLAYERS = 16, MIN_PLAYERS = 4;
 // kode penyebab kematian → dipakai klien untuk memilih animasi
-const CAUSE_CODE = { 'dimangsa serigala': 'wolf', 'mengorbankan diri melindungi warga': 'guard', diracun: 'poison', 'terkena panah Hunter': 'hunter', 'dieksekusi warga': 'vote' };
+const CAUSE_CODE = { 'dimangsa serigala': 'wolf', 'mengorbankan diri melindungi warga': 'guard', diracun: 'poison', 'terkena panah Hunter': 'hunter', 'ditembak sniper': 'sniper', 'dieksekusi warga': 'vote' };
 const newStats = () => ({ checks: 0, found: 0, saves: 0, guardSaves: 0, sacrifice: 0, kills: 0, poisonWolf: 0, poisonVillager: 0, hunterWolf: 0, hunterMiss: 0, votes: 0, wolfVotes: 0, wolfExec: 0, misled: 0, chats: 0 });
 
 const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
@@ -231,7 +231,7 @@ export class Game {
   // ---------------- malam ----------------
   beginNight() {
     this.day++;
-    this.night = { wolfVotes: {}, see: {}, protect: null, guard: null, heal: false, poison: null, done: new Set() };
+    this.night = { wolfVotes: {}, see: {}, protect: null, guard: null, heal: false, poison: null, snipe: null, done: new Set() };
     this.announce(`🌙 Malam ke-${this.day}. Desa tertidur…`, 'phase');
     this.sys(`Malam ke-${this.day} tiba. Para peran malam, lakukan aksimu.`);
     this.scheduleBots('night');
@@ -276,6 +276,11 @@ export class Game {
         if (!validTarget || t.id === id) return { ok: false, error: 'Pilih pemain lain untuk dikawal.' };
         n.guard = t.id; n.done.add(id);
         break;
+      case 'hunter':
+        if (a.type === 'skip') { n.snipe = null; n.done.add(id); break; }
+        if (!validTarget || t.id === id) return { ok: false, error: 'Pilih target sniper.' };
+        n.snipe = n.snipe === t.id ? null : t.id; n.done.add(id);
+        break;
       case 'witch':
         if (a.type === 'heal') {
           if (!p.potions.heal) return { ok: false, error: 'Ramuan penyembuh sudah dipakai.' };
@@ -310,7 +315,6 @@ export class Game {
     if (!p || !p.alive) return;
     p.alive = false; p.diedDay = this.day; p.cause = cause; p.causeCode = CAUSE_CODE[cause] || 'other'; p.killer = killer;
     this.pendingDeaths.push(p.id);
-    if (p.role === 'hunter') this.hunterQueue.push(p.id);
   }
 
   resolveNight() {
@@ -333,6 +337,14 @@ export class Game {
           this.kill(victim, 'dimangsa serigala');
           for (const [wid, t] of Object.entries(n.wolfVotes)) if (t === victim.id) st(this.players.get(wid), 'kills');
         }
+      }
+    }
+    const hunter = this.alive.find((p) => p.role === 'hunter');
+    if (n.snipe && hunter) {
+      const st2 = this.players.get(n.snipe);
+      if (st2?.alive) {
+        if (n.protect === st2.id) saved = true;
+        else { st(hunter, st2.role === 'werewolf' ? 'hunterWolf' : 'hunterMiss'); this.kill(st2, 'ditembak sniper', hunter.id); }
       }
     }
     if (n.poison && witch && witch.potions.poison) {
@@ -496,6 +508,9 @@ export class Game {
       } else if (b.role === 'seer') this.act(b.id, { target: pick(others).id });
       else if (b.role === 'doctor') { const pool = this.alive.filter((p) => p.id !== b.lastProtect); this.act(b.id, { target: pick(pool).id }); }
       else if (b.role === 'guardian') this.act(b.id, { target: pick(others).id });
+      else if (b.role === 'hunter') {
+        if (Math.random() < 0.45) this.act(b.id, { target: pick(others).id }); else this.act(b.id, { type: 'skip' });
+      }
       else if (b.role === 'witch') {
         if (b.potions.heal && this.wolfTarget() && Math.random() < 0.4) this.act(b.id, { type: 'heal' });
         this.act(b.id, { type: 'done' });
@@ -544,12 +559,13 @@ export class Game {
       if (meWolf) { v.night.wolfVotes = n.wolfVotes; v.night.target = this.wolfTarget(); }
       if (me.role === 'doctor') v.night.choice = n.protect;
       if (me.role === 'guardian') v.night.choice = n.guard;
+      if (me.role === 'hunter') v.night.choice = n.snipe;
       if (me.role === 'seer') v.night.choice = n.see[id];
       if (me.role === 'witch') { v.night.victim = this.wolfTarget(); v.night.heal = n.heal; v.night.poison = n.poison; }
     }
     if (isMod && this.night) {
       const n = this.night;
-      v.modNight = { wolfTarget: this.wolfTarget(), protect: n.protect, guard: n.guard, heal: n.heal, poison: n.poison, see: n.see, done: [...n.done], actors: this.nightActors().map((p) => p.id) };
+      v.modNight = { wolfTarget: this.wolfTarget(), snipe: n.snipe, protect: n.protect, guard: n.guard, heal: n.heal, poison: n.poison, see: n.see, done: [...n.done], actors: this.nightActors().map((p) => p.id) };
     }
     if (this.phase === 'vote') {
       v.votes = this.votes || {}; // terbuka (voting publik)
@@ -578,8 +594,8 @@ export class Game {
       if (s.sacrifice) add(40, 'Gugur menggantikan warga yang dikawal');
       if (s.poisonWolf) add(45, 'Meracuni seekor Werewolf');
       if (s.poisonVillager) add(-15, 'Salah meracuni warga');
-      if (s.hunterWolf) add(45, 'Panah terakhir menembus Werewolf');
-      if (s.hunterMiss) add(-10, 'Panah terakhir meleset ke warga');
+      if (s.hunterWolf) add(s.hunterWolf * 45, `Sniper menembak mati ${s.hunterWolf} Werewolf`);
+      if (s.hunterMiss) add(s.hunterMiss * -12, `Sniper salah menembak ${s.hunterMiss} warga`);
       if (s.wolfExec) add(s.wolfExec * 25, `Ikut mengeksekusi ${s.wolfExec} Werewolf`);
       else if (s.wolfVotes) add(s.wolfVotes * 12, `Memilih Werewolf ${s.wolfVotes}× saat voting`);
       if (p.alive) add(20, `Bertahan hidup sampai akhir (${this.day} hari)`);

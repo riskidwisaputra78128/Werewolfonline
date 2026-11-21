@@ -28,7 +28,7 @@ Versi **tanpa server** (Netlify/Vercel/Pages/Apps Script) memakai **P2P (WebRTC 
 - Versi **Firebase** menampilkan **daftar room aktif** di halaman awal: pemain tinggal sentuh *Gabung*, tanpa kode. Room otomatis hilang dari daftar saat host keluar/menutup tab, dan sisa room yatim dibersihkan sendiri. Host bisa mematikan *Tampilkan di daftar* untuk room privat.
 
 ### Rules Firebase Realtime Database
-Daftar room disimpan di `ww/rooms/_lobby`, jadi cukup rules yang mengizinkan baca/tulis `ww/rooms` (tidak perlu rules tambahan).
+Daftar room dibaca dari `meta` tiap room di `ww/rooms`, jadi cukup rules yang mengizinkan baca/tulis `ww/rooms` (tidak perlu rules tambahan).
 - Pada jaringan yang sangat ketat (sebagian WiFi kantor), koneksi bisa gagal. Coba jaringan lain atau hotspot HP.
 
 ### Netlify (paling mudah)
@@ -50,13 +50,14 @@ Daftar room disimpan di `ww/rooms/_lobby`, jadi cukup rules yang mengizinkan bac
 ## Fitur
 - Room & lobby, kode room, link undangan, maks 16 pemain.
 - Host = Moderator (opsional): melihat semua peran & aksi malam, lanjut fase, jeda timer, ulang game, keluarkan pemain.
-- Peran: Werewolf, Seer, Doctor, Hunter, Hakim (suara ×2), Guardian, Witcher, Villager. Peran khusus dan jumlah werewolf bisa diatur.
+- Peran: Werewolf, Seer, Doctor, Hunter (sniper tiap malam), Hakim (suara ×2), Guardian, Witcher, Villager. Peran khusus dan jumlah werewolf bisa diatur.
 - Chat umum, chat rahasia serigala, chat arwah, plus gelembung chat di atas avatar.
 - Desa 3D: siang/malam mengikuti fase, klik avatar untuk memilih target, nisan untuk pemain mati, werewolf berubah wujud di akhir.
 - Bot pengisi dan latihan offline vs 7 bot.
+- Karakter hero bergaya fantasi: jubah berbordir yang berkibar, cape, pauldron, rambut & telinga elf acak, orb sihir, tongkat, kristal melayang, aura warna pemain. Moderator bersayap dengan halo.
 - Tema visual dark fantasy: rune merah menyala, panel bergaya grimoire, kartu peran tome 3D (miring mengikuti kursor) dengan sigil berbeda tiap peran.
 - Efek 3D: lingkaran rune di lapangan desa, bulan darah, kabut tanah, bara api, debu sihir, color grading + vignette, guncangan kamera.
-- Animasi kematian per penyebab: dimangsa serigala (bayangan werewolf menerkam + cakar), eksekusi voting (lingkaran penghakiman + pilar cahaya), racun Witcher (asap hijau), panah Hunter (panah emas melesat), Guardian berkorban (perisai emas pecah). Kamera otomatis menyorot korban.
+- Animasi kematian per penyebab: dimangsa serigala (bayangan werewolf menerkam + cakar), eksekusi voting (lingkaran penghakiman + pilar cahaya), racun Witcher (asap hijau), sniper Hunter (laser merah dari kegelapan + peluru pelacak), Guardian berkorban (perisai emas pecah). Kamera otomatis menyorot korban.
 - Akhir game: tim pemenang naik **podium 3D** (peringkat 1–3) dengan konfeti, plus panel **kontribusi** tiap pemain (memangsa, menerawang, menyelamatkan, voting tepat, bertahan hidup, dll.).
 
 ## Pengembangan
