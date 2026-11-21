@@ -57,6 +57,10 @@ Daftar room disimpan di `ww/lobby`, jadi rules harus mengizinkan path itu juga, 
 - Chat umum, chat rahasia serigala, chat arwah, plus gelembung chat di atas avatar.
 - Desa 3D: siang/malam mengikuti fase, klik avatar untuk memilih target, nisan untuk pemain mati, werewolf berubah wujud di akhir.
 - Bot pengisi dan latihan offline vs 7 bot.
+- Tema visual dark fantasy: rune merah menyala, panel bergaya grimoire, kartu peran tome 3D (miring mengikuti kursor) dengan sigil berbeda tiap peran.
+- Efek 3D: lingkaran rune di lapangan desa, bulan darah, kabut tanah, bara api, debu sihir, color grading + vignette, guncangan kamera.
+- Animasi kematian per penyebab: dimangsa serigala (bayangan werewolf menerkam + cakar), eksekusi voting (lingkaran penghakiman + pilar cahaya), racun Witcher (asap hijau), panah Hunter (panah emas melesat), Guardian berkorban (perisai emas pecah). Kamera otomatis menyorot korban.
+- Akhir game: tim pemenang naik **podium 3D** (peringkat 1–3) dengan konfeti, plus panel **kontribusi** tiap pemain (memangsa, menerawang, menyelamatkan, voting tepat, bertahan hidup, dll.).
 
 ## Pengembangan
 ```bash

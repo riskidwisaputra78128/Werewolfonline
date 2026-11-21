@@ -25,6 +25,9 @@ const BOT_NAMES = ['Bima', 'Sari', 'Dewi', 'Agus', 'Rina', 'Joko', 'Putri', 'Bay
 export const COLORS = ['#c0392b', '#2980b9', '#27ae60', '#8e44ad', '#d35400', '#16a085', '#f1c40f', '#7f8c8d', '#e84393', '#00cec9', '#6c5ce7', '#fd9644', '#a3cb38', '#b53471', '#1289a7', '#c4e538'];
 
 const MAX_PLAYERS = 16, MIN_PLAYERS = 4;
+// kode penyebab kematian → dipakai klien untuk memilih animasi
+const CAUSE_CODE = { 'dimangsa serigala': 'wolf', 'mengorbankan diri melindungi warga': 'guard', diracun: 'poison', 'terkena panah Hunter': 'hunter', 'dieksekusi warga': 'vote' };
+const newStats = () => ({ checks: 0, found: 0, saves: 0, guardSaves: 0, sacrifice: 0, kills: 0, poisonWolf: 0, poisonVillager: 0, hunterWolf: 0, hunterMiss: 0, votes: 0, wolfVotes: 0, wolfExec: 0, misled: 0, chats: 0 });
 
 const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
@@ -102,7 +105,7 @@ export class Game {
     } else {
       // di tengah game: tandai mati & terputus agar tidak menghambat
       p.connected = false;
-      if (p.alive && id !== this.modId) { p.alive = false; p.diedDay = this.day; this.announce(`${p.name} meninggalkan desa (${reason}).`, 'death'); }
+      if (p.alive && id !== this.modId) { p.alive = false; p.diedDay = this.day; p.causeCode = 'left'; p.killer = null; this.announce(`${p.name} meninggalkan desa (${reason}).`, 'death'); }
     }
     if (id !== this.modId) this.sys(`${p.name} ${reason === 'dikeluarkan' ? 'dikeluarkan dari room' : 'meninggalkan room'}.`);
     if (id === this.modId) { this.modId = null; this.players.delete(id); this.sys('Moderator meninggalkan room. Game berjalan otomatis dengan timer.'); }
@@ -169,7 +172,7 @@ export class Game {
     if (seats.length < MIN_PLAYERS) return { ok: false, error: `Minimal ${MIN_PLAYERS} pemain (tambahkan bot jika kurang).` };
     const roles = shuffle(this.plannedRoles());
     shuffle([...seats]).forEach((p, i) => {
-      Object.assign(p, { role: roles[i], alive: true, diedDay: null, notes: [], lastProtect: null, potions: { heal: true, poison: true } });
+      Object.assign(p, { role: roles[i], alive: true, diedDay: null, cause: null, causeCode: null, killer: null, notes: [], lastProtect: null, potions: { heal: true, poison: true }, stats: newStats() });
     });
     if (this.modId) this.players.get(this.modId).role = 'moderator';
     this.day = 0; this.winner = null; this.log = []; this.chat = this.chat.slice(-10);
@@ -258,7 +261,9 @@ export class Game {
         if (n.done.has(id)) return { ok: false, error: 'Kamu sudah menerawang malam ini.' };
         if (!validTarget || t.id === id) return { ok: false, error: 'Pilih pemain lain.' };
         const isWolf = t.role === 'werewolf';
+        const already = p.notes.some((x) => x.target === t.id);
         p.notes.push({ day: this.day, text: `Malam ${this.day}: ${t.name} ${isWolf ? 'ADALAH 🐺 Werewolf!' : 'bukan Werewolf.'}`, target: t.id, wolf: isWolf });
+        if (p.stats && !already) { p.stats.checks++; if (isWolf) p.stats.found++; }
         n.see[id] = t.id; n.done.add(id);
         break;
       }
@@ -301,9 +306,9 @@ export class Game {
     }
   }
 
-  kill(p, cause) {
+  kill(p, cause, killer = null) {
     if (!p || !p.alive) return;
-    p.alive = false; p.diedDay = this.day; p.cause = cause;
+    p.alive = false; p.diedDay = this.day; p.cause = cause; p.causeCode = CAUSE_CODE[cause] || 'other'; p.killer = killer;
     this.pendingDeaths.push(p.id);
     if (p.role === 'hunter') this.hunterQueue.push(p.id);
   }
@@ -317,16 +322,25 @@ export class Game {
     const doctor = this.alive.find((p) => p.role === 'doctor');
     if (doctor) doctor.lastProtect = n.protect;
     let saved = false;
+    const st = (pl, k) => { if (pl?.stats) pl.stats[k]++; };
     if (victim) {
-      if (n.protect === victim.id) saved = true;
-      if (n.heal && witch && witch.potions.heal) { saved = true; witch.potions.heal = false; }
+      if (n.protect === victim.id) { saved = true; st(doctor, 'saves'); }
+      if (n.heal && witch && witch.potions.heal) { if (!saved) st(witch, 'saves'); saved = true; witch.potions.heal = false; }
       if (!saved) {
         const guardian = this.alive.find((p) => p.role === 'guardian');
-        if (guardian && n.guard === victim.id) this.kill(guardian, 'mengorbankan diri melindungi warga');
-        else this.kill(victim, 'dimangsa serigala');
+        if (guardian && n.guard === victim.id) { st(guardian, 'sacrifice'); this.kill(guardian, 'mengorbankan diri melindungi warga'); }
+        else {
+          this.kill(victim, 'dimangsa serigala');
+          for (const [wid, t] of Object.entries(n.wolfVotes)) if (t === victim.id) st(this.players.get(wid), 'kills');
+        }
       }
     }
-    if (n.poison && witch && witch.potions.poison) { witch.potions.poison = false; this.kill(this.players.get(n.poison), 'diracun'); }
+    if (n.poison && witch && witch.potions.poison) {
+      witch.potions.poison = false;
+      const pt = this.players.get(n.poison);
+      if (pt?.alive) st(witch, pt.role === 'werewolf' ? 'poisonWolf' : 'poisonVillager');
+      this.kill(pt, 'diracun', witch.id);
+    }
     this.night = null;
 
     if (!this.pendingDeaths.length) {
@@ -365,7 +379,8 @@ export class Game {
     const t = target && this.players.get(target);
     this.pendingDeaths = []; const queue = this.hunterQueue || []; this.hunterQueue = queue;
     if (t && t.alive && t.id !== id && t.id !== this.modId) {
-      this.kill(t, 'terkena panah Hunter');
+      const h = this.players.get(id); if (h?.stats) h.stats[t.role === 'werewolf' ? 'hunterWolf' : 'hunterMiss']++;
+      this.kill(t, 'terkena panah Hunter', id);
       this.announce(`🏹 Panah Hunter menembus ${t.name}!${this.settings.revealRoles ? ` Ia adalah ${ROLES[t.role].icon} ${ROLES[t.role].name}.` : ''}`, 'death');
     } else this.announce(timeout ? 'Hunter tidak sempat menembak.' : 'Hunter menurunkan busurnya.', 'info');
     this.sys(this.log[this.log.length - 1].text);
@@ -392,6 +407,12 @@ export class Game {
   }
   resolveVote() {
     this.pendingDeaths = []; this.hunterQueue = [];
+    for (const [voter, target] of Object.entries(this.votes || {})) {
+      const vp = this.players.get(voter), tp = this.players.get(target);
+      if (!vp?.stats || !vp.alive) continue;
+      vp.stats.votes++;
+      if (tp && tp.role === 'werewolf' && vp.role !== 'werewolf') vp.stats.wolfVotes++;
+    }
     const t = this.tally();
     const entries = Object.entries(t).sort((a, b) => b[1] - a[1]);
     let msg;
@@ -401,6 +422,11 @@ export class Game {
     else {
       const d = this.players.get(entries[0][0]);
       this.kill(d, 'dieksekusi warga');
+      for (const [voter, target] of Object.entries(this.votes || {})) {
+        const vp = this.players.get(voter); if (!vp?.stats || target !== d.id) continue;
+        if (d.role === 'werewolf' && vp.role !== 'werewolf') vp.stats.wolfExec++;
+        if (d.role !== 'werewolf' && vp.role === 'werewolf') vp.stats.misled++;
+      }
       msg = `⚖ Warga memutuskan mengeksekusi ${d.name} (${entries[0][1]} suara).${this.settings.revealRoles ? ` Ia adalah ${ROLES[d.role].icon} ${ROLES[d.role].name}.` : ''}`;
     }
     this.lastTally = t;
@@ -444,6 +470,7 @@ export class Game {
     const channel = this.channelFor(p);
     if (!channel) return { ok: false, error: 'Kamu sedang tidur. Tidak bisa bicara di malam hari.' };
     this.pushChat({ id, name: p.name, color: p.color, text: msg, channel, mod: id === this.modId });
+    if (p.stats && this.phase !== 'lobby' && this.phase !== 'end') p.stats.chats++;
     this.emit();
     return { ok: true };
   }
@@ -497,6 +524,7 @@ export class Game {
       return {
         id: p.id, name: p.name, color: p.color, isBot: p.isBot, connected: p.connected, alive: p.alive,
         isHost: p.id === this.hostId, isMod: p.id === this.modId, role: showRole ? p.role : null,
+        cause: p.alive ? null : (p.causeCode || null), killer: p.alive ? null : (p.causeCode === 'hunter' ? p.killer : null), diedDay: p.alive ? null : p.diedDay,
       };
     });
     const v = {
@@ -529,7 +557,40 @@ export class Game {
     }
     if (this.phase === 'verdict') v.tally = this.lastTally;
     if (this.phase === 'hunter') v.hunterId = this.hunterId;
+    if (ended && this.winner) v.podium = this.podium();
     return v;
+  }
+
+  /** Peringkat kontribusi semua pemain, tim pemenang di depan (untuk podium akhir) */
+  podium() {
+    if (this._podium && this._podiumKey === this.winner + this.day) return this._podium;
+    const rows = [];
+    for (const p of this.seated) {
+      if (!p.role) continue;
+      const team = ROLES[p.role].team, s = p.stats || newStats(), lines = [];
+      let score = 0;
+      const add = (pts, text) => { score += pts; lines.push(text); };
+      if (s.kills) add(s.kills * 30, `Memangsa ${s.kills} warga`);
+      if (s.misled) add(s.misled * 25, `Menggiring warga mengeksekusi ${s.misled} orang tak bersalah`);
+      if (s.found) add(s.found * 35, `Menerawang dan menemukan ${s.found} Werewolf`);
+      else if (s.checks) add(s.checks * 8, `Menerawang ${s.checks} warga`);
+      if (s.saves) add(s.saves * 35, `Menyelamatkan ${s.saves} nyawa dari serangan malam`);
+      if (s.sacrifice) add(40, 'Gugur menggantikan warga yang dikawal');
+      if (s.poisonWolf) add(45, 'Meracuni seekor Werewolf');
+      if (s.poisonVillager) add(-15, 'Salah meracuni warga');
+      if (s.hunterWolf) add(45, 'Panah terakhir menembus Werewolf');
+      if (s.hunterMiss) add(-10, 'Panah terakhir meleset ke warga');
+      if (s.wolfExec) add(s.wolfExec * 25, `Ikut mengeksekusi ${s.wolfExec} Werewolf`);
+      else if (s.wolfVotes) add(s.wolfVotes * 12, `Memilih Werewolf ${s.wolfVotes}× saat voting`);
+      if (p.alive) add(20, `Bertahan hidup sampai akhir (${this.day} hari)`);
+      else add(Math.min(15, (p.diedDay || 0) * 4), `Gugur di hari ke-${p.diedDay || 0}${p.cause ? ' — ' + p.cause : ''}`);
+      if (s.chats >= 3) add(Math.min(15, s.chats), `Aktif berdiskusi (${s.chats} pesan)`);
+      rows.push({ id: p.id, name: p.name, color: p.color, role: p.role, team, alive: p.alive, score: Math.max(0, score), lines });
+    }
+    rows.sort((a, b) => (b.team === this.winner) - (a.team === this.winner) || b.score - a.score);
+    rows.forEach((r) => (r.winner = r.team === this.winner));
+    this._podium = rows; this._podiumKey = this.winner + this.day;
+    return rows;
   }
 
   summary() {

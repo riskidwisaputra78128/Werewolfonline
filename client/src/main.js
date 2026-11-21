@@ -20,8 +20,9 @@ addEventListener('pointerdown', () => audio.init(), { once: true });
 
 const village = new Village($('scene'), { onPick: (id) => pickHandler?.(id), low: matchMedia('(max-width:700px)').matches || location.search.includes('low') });
 village.controls.autoRotate = true;
+window.__ww = { village }; // untuk debug di konsol
 
-let net = null, offline = new OfflineTransport(), T = null;
+let net = null, offline = new OfflineTransport(), T = null, stopRoomWatch = null;
 let V = null, offset = 0, pickHandler = null, lastLogT = 0, lastChatN = 0, unread = 0, lastPhase = '', revealShown = '', endShown = false;
 let appUrl = location.origin + location.pathname;
 if (GAS) { try { google.script.run.withSuccessHandler((u) => { if (u) appUrl = u; }).getAppUrl(); } catch { /* */ } }
@@ -64,7 +65,7 @@ if (net) {
 offline.on('state', (v) => { if (T === offline) onState(v); });
 offline.on('left', () => backToLobby());
 
-let stopRoomWatch = null;
+
 function startRoomWatch() {
   if (stopRoomWatch) return;
   stopRoomWatch = watchRooms((rooms, err) => {
@@ -125,7 +126,7 @@ function backToLobby(msg) {
   T = null; V = null; lastPhase = ''; revealShown = ''; endShown = false; lastLogT = 0; lastChatN = 0;
   $('hud').classList.add('hidden'); $('lobby').classList.remove('hidden');
   ['guide', 'reveal', 'end'].forEach((m) => $(m).classList.add('hidden'));
-  village.sync([]); village.decorate({}); village.controls.autoRotate = true; village.setTimeOfDay(0.72);
+  village.setPodium([]); village.sync([]); village.decorate({}); village.controls.autoRotate = true; village.setTimeOfDay(0.72);
   lobbyMsg(msg || '');
   if (!GAS) { try { history.replaceState(null, '', location.pathname + location.search.replace(/[?&]room=[A-Z0-9]+/i, '')); } catch { /* */ } }
   if (MODE === 'static') setStatus('online');
@@ -151,6 +152,7 @@ function onState(v) {
   }
   if (v.phase !== lastPhase) onPhaseChange(v, lastPhase);
   lastPhase = v.phase;
+  village.setPodium(v.phase === 'end' && v.podium ? v.podium.filter((r) => r.winner).slice(0, 3).map((r) => r.id) : []);
   village.sync(v.players, { reveal: v.phase === 'end' });
   if (TIME[v.phase] != null) village.setTimeOfDay(v.phase === 'end' && v.winner === 'wolf' ? 0.95 : TIME[v.phase]);
   // banner pengumuman
@@ -167,7 +169,7 @@ function onState(v) {
 function onPhaseChange(v, prev) {
   if (v.phase === 'night') { audio.howl(); }
   else if (v.phase === 'reveal' && revealShown !== v.code + v.day) { revealShown = v.code + v.day; showReveal(); }
-  else if (v.phase === 'end' && !endShown) { endShown = true; setTimeout(() => { village.howl(); showEnd(); }, 1200); audio.level(); }
+  else if (v.phase === 'end' && !endShown) { endShown = true; setTimeout(() => village.howl(), 1200); setTimeout(() => { if (V?.phase === 'end') showEnd(); }, 4200); audio.level(); }
   else if (prev) audio.tone(660, 0.25, 'triangle', 0.1);
   if (v.phase !== 'end') endShown = false;
   if (v.phase === 'lobby') $('end').classList.add('hidden');
@@ -209,6 +211,7 @@ function decorate() {
     if (v.night.poison && d[v.night.poison]) d[v.night.poison].ring = '#a855f7';
   }
   if (mine?.notes) for (const n of mine.notes) if (d[n.target]) d[n.target].badge = n.wolf ? '🐺 !' : '✓ warga';
+  if (v.phase === 'end' && v.podium) v.podium.filter((r) => r.winner).slice(0, 3).forEach((r, i) => { if (d[r.id]) d[r.id].badge = ['🥇', '🥈', '🥉'][i] + ' ' + r.score; });
   for (const id of currentTargets) if (d[id]) d[id].selectable = true;
   village.decorate(d);
 }
@@ -405,15 +408,60 @@ $('chatForm').onsubmit = async (e) => {
 };
 
 // ================= MODAL & TOMBOL =================
+// warna cahaya tiap peran (bingkai tome) & jumlah ujung bintang sigil
+const ROLE_GLOW = {
+  werewolf: ['255,45,35', 7], seer: ['170,110,255', 6], doctor: ['70,230,140', 4], hunter: ['255,170,60', 3], judge: ['255,215,120', 8],
+  guardian: ['90,170,255', 6], witch: ['120,255,120', 5], villager: ['230,200,150', 4], moderator: ['190,140,255', 8],
+};
+const glowVars = (r) => { const c = (ROLE_GLOW[r] || ROLE_GLOW.villager)[0]; return `--g:rgba(${c},.5);--g2:rgba(${c},.28)`; };
+/** Sigil SVG prosedural: cincin rune + bintang n-ujung, warna sesuai peran */
+function sigil(r, cls = 'sig', unknown) {
+  const [c, n] = unknown ? ['255,59,48', 6] : (ROLE_GLOW[r] || ROLE_GLOW.villager);
+  const col = `rgb(${c})`, pts = [];
+  const step = n % 2 ? 2 : (n === 4 ? 1 : n === 6 ? 2 : 3);
+  for (let i = 0; i <= n; i++) { const a = -Math.PI / 2 + ((i * step) % n) / n * Math.PI * 2; pts.push(`${(100 + Math.cos(a) * 62).toFixed(1)},${(100 + Math.sin(a) * 62).toFixed(1)}`); }
+  let ticks = '';
+  for (let i = 0; i < 24; i++) { const a = (i / 24) * Math.PI * 2, r1 = 80, r2 = i % 3 ? 85 : 89; ticks += `M${(100 + Math.cos(a) * r1).toFixed(1)} ${(100 + Math.sin(a) * r1).toFixed(1)}L${(100 + Math.cos(a) * r2).toFixed(1)} ${(100 + Math.sin(a) * r2).toFixed(1)}`; }
+  let dots = '';
+  for (let i = 0; i < n; i++) { const a = -Math.PI / 2 + (i / n) * Math.PI * 2; dots += `<circle cx="${(100 + Math.cos(a) * 62).toFixed(1)}" cy="${(100 + Math.sin(a) * 62).toFixed(1)}" r="5"/>`; }
+  return `<svg class="${cls}" viewBox="0 0 200 200" aria-hidden="true"><g fill="none" stroke="${col}" stroke-width="1.6" style="filter:drop-shadow(0 0 4px ${col})">
+    <circle cx="100" cy="100" r="92" stroke-width="2.4"/><circle cx="100" cy="100" r="76"/><circle cx="100" cy="100" r="62" stroke-opacity=".6"/>
+    <path d="${ticks}"/><polyline points="${pts.join(' ')}" stroke-width="2"/>${dots}<circle cx="100" cy="100" r="22" stroke-opacity=".7"/></g></svg>`;
+}
 function roleCard(r, big) {
   const R = ROLES[r];
-  return `<div class="rc ${big ? 'big' : ''} ${r === 'werewolf' ? 'wolf' : r === 'moderator' ? 'mod' : ''}" data-flip>
-    <div class="in"><div class="f"><div class="ic">${big ? '❔' : R.icon}</div><div class="nm">${big ? 'Kartu Rahasia' : R.name}</div><div class="fx">${big ? '' : R.faction}</div><div class="tap">↻ Sentuh untuk putar</div></div>
-    <div class="b"><div class="ic">${R.icon}</div><div class="nm">${R.name}</div><div class="fx">${R.faction}</div><p style="margin-top:10px">${R.desc}</p></div></div></div>`;
+  return `<div class="rc ${big ? 'big' : ''}" data-flip data-tilt style="${big ? '--g:rgba(255,59,48,.5);--g2:rgba(255,59,48,.3)' : glowVars(r)}">
+    <div class="in"><div class="f" style="${glowVars(r)}${big ? ';--g:rgba(255,59,48,.5)' : ''}">${sigil(r, 'sig', big)}<div class="ic">${big ? '❔' : R.icon}</div><div class="nm">${big ? 'Kartu Rahasia' : R.name}</div><div class="fx">${big ? '' : R.faction}</div><div class="tap">↻ Sentuh untuk membuka</div></div>
+    <div class="b"><div class="ic">${R.icon}</div><div class="nm">${R.name}</div><div class="fx">${R.faction}</div><p>${R.desc}</p></div></div></div>`;
 }
-function bindFlip(root) { root.querySelectorAll('[data-flip]').forEach((c) => (c.onclick = () => c.classList.toggle('flip'))); }
+function bindFlip(root) { root.querySelectorAll('[data-flip]').forEach((c) => (c.onclick = () => c.classList.toggle('flip'))); bindTilt(root); }
+/** efek 3D: kartu miring mengikuti kursor/jari */
+function bindTilt(root) {
+  root.querySelectorAll('[data-tilt]').forEach((el) => {
+    if (el._tilt) return; el._tilt = true;
+    const inner = el.querySelector('.in') || el;
+    const move = (e) => {
+      const r = el.getBoundingClientRect(), x = (e.clientX - r.left) / r.width - 0.5, y = (e.clientY - r.top) / r.height - 0.5;
+      const base = el.classList.contains('flip') ? 180 : 0;
+      inner.style.transition = 'transform .08s';
+      inner.style.transform = `rotateY(${base + x * 22}deg) rotateX(${-y * 16}deg)`;
+    };
+    el.addEventListener('pointermove', move);
+    el.addEventListener('pointerleave', () => { inner.style.transition = ''; inner.style.transform = ''; });
+    el.addEventListener('click', () => { inner.style.transition = ''; inner.style.transform = ''; });
+  });
+}
 $('guideCards').innerHTML = Object.keys(ROLES).map((r) => roleCard(r)).join('');
 bindFlip($('guideCards'));
+// rak "Kitab Peran" di lobby + segel rune di judul
+$('tomes').innerHTML = Object.keys(ROLES).map((r) => `<div class="tome" data-tilt data-role="${r}" style="${glowVars(r)}" title="${esc(ROLES[r].name)}">${sigil(r, '')}<div class="ic">${ROLES[r].icon}</div><div class="nm">${ROLES[r].name}</div></div>`).join('');
+$('tomes').querySelectorAll('.tome').forEach((t) => (t.onclick = () => {
+  $('guide').classList.remove('hidden');
+  const card = [...$('guideCards').children][Object.keys(ROLES).indexOf(t.dataset.role)];
+  card?.classList.add('flip'); card?.scrollIntoView({ block: 'center' });
+}));
+bindTilt($('tomes'));
+$('seal').outerHTML = sigil('werewolf', 'seal').replace('<svg', '<svg id="seal"');
 function showReveal() {
   if (!V) return;
   const r = V.isMod ? 'moderator' : V.me?.role;
@@ -427,11 +475,26 @@ function showReveal() {
 }
 function showEnd() {
   if (!V) return;
-  $('endTitle').textContent = V.winner === 'village' ? '🎉 Warga Menang!' : '🐺 Werewolf Menang!';
-  $('endList').innerHTML = V.players.filter((p) => !p.isMod).map((p) => `<div class="pi ${p.alive ? '' : 'dead'}" style="--c:${p.color}"><div class="nm">${esc(p.name)}<small>${roleOf(p.role).icon} ${roleOf(p.role).name} · ${p.alive ? 'selamat' : '☠ mati'}</small></div></div>`).join('');
+  const wolfWin = V.winner === 'wolf';
+  $('endTitle').textContent = wolfWin ? 'Serigala Berkuasa' : 'Desa Terselamatkan';
+  $('endSub').textContent = wolfWin ? '🐺 Tim Werewolf menang — podium untuk para pemangsa paling berjasa.' : '🎉 Tim Warga menang — podium untuk pahlawan desa paling berjasa.';
+  const rows = V.podium || [];
+  const winners = rows.filter((r) => r.winner), top = winners.slice(0, 3), rest = rows.filter((r) => !top.includes(r));
+  const medal = ['🥇', '🥈', '🥉'];
+  $('podium').innerHTML = top.map((r, i) => `<div class="pod r${i + 1}" style="${glowVars(r.role)};--c:${r.color}">
+      <div class="medal">${medal[i]}</div>
+      <div class="who"><i></i><b>${esc(r.name)}</b></div>
+      <div class="rl">${roleOf(r.role).icon} ${roleOf(r.role).name} · ${r.alive ? 'selamat' : '☠ gugur'}</div>
+      <div class="score">✦ ${r.score} poin kontribusi</div>
+      <ul>${r.lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul></div>`).join('');
+  $('endList').innerHTML = rest.map((r) => `<div class="pi ${r.winner ? '' : 'lose'} ${r.alive ? '' : 'dead'}" style="--c:${r.color}"><div class="nm">${esc(r.name)} <span class="muted" style="font-weight:600">· ${r.score} poin</span>
+      <small>${roleOf(r.role).icon} ${roleOf(r.role).name} · ${r.winner ? 'tim menang' : 'tim kalah'}</small>
+      <ul style="margin-top:4px">${r.lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul></div></div>`).join('');
   $('btnAgain').classList.toggle('hidden', !V.canControl);
-  $('end').classList.remove('hidden');
+  $('end').classList.remove('hidden', 'mini'); $('btnMin').textContent = '▼ Lihat podium';
 }
+$('btnRoles').onclick = () => { $('guide').classList.remove('hidden'); };
+$('btnMin').onclick = () => { const c = $('end').classList.toggle('mini'); $('btnMin').textContent = c ? '▲ Kontribusi' : '▼ Lihat podium'; };
 $('btnAgain').onclick = () => { send('restart'); $('end').classList.add('hidden'); };
 document.querySelectorAll('[data-close]').forEach((b) => (b.onclick = () => { $(b.dataset.close).classList.add('hidden'); if (['warga', 'chat'].includes(b.dataset.close)) { $('hud').classList.remove('panel'); ['tWarga', 'tChat'].forEach((x) => $(x).classList.remove('on')); } }));
 $('chipRole').onclick = showReveal;

@@ -10,6 +10,9 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { fbm, simplex2, mulberry32, smoothstep, lerp } from './noise.js';
 import * as T from './textures.js';
 import { createBiped, clothMat, makePlayerWerewolf, makeElder } from './characters.js';
+import { FX, gradePass } from './effects.js';
+const ease = (t) => t * t * (3 - 2 * t);
+const seg = (t, a, b) => Math.max(0, Math.min(1, (t - a) / (b - a)));
 
 const R = mulberry32(77);
 export function heightAt(x, z) {
@@ -39,7 +42,11 @@ export class Village {
     this.composer = new EffectComposer(r);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
     this.bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.5, 0.6, 0.85);
-    this.composer.addPass(this.bloom); this.composer.addPass(new OutputPass());
+    this.grade = gradePass();
+    this.composer.addPass(this.bloom); this.composer.addPass(this.grade); this.composer.addPass(new OutputPass());
+    this.home = new THREE.Vector3(0, 1.5, 0); this.camHold = 0; this.shakeAmt = 0; this.shakeOff = new THREE.Vector3(); this.redPulse = 0;
+    this.deathQueue = []; this.cine = null; this.cineGap = 0;
+    this.controls.addEventListener('start', () => { this.camHold = 2.5; });
 
     this.time = 0.7; this.targetTime = 0.7;
     this.avatars = new Map();
@@ -49,6 +56,9 @@ export class Village {
     this.uTime = { value: 0 };
 
     this.buildLights(); this.buildSky(); this.buildGround(); this.buildForest(); this.buildGrass(); this.buildHouses(); this.buildFire(); this.buildFireflies();
+    this.fx = new FX(this); this.fx.ambience(heightAt);
+    this.podiumAt = new THREE.Vector3(0, heightAt(0, 0), 0); this.fireOn = 1; this.fx.buildPodium(this.podiumAt);
+    this.podiumIds = [];
     this.modRig = makeElder(); this.modRig.root.visible = false; this.scene.add(this.modRig.root);
 
     addEventListener('resize', () => this.resize());
@@ -227,6 +237,8 @@ export class Village {
     this.stars.material.opacity = nf;
     this.moon.position.copy(moonDir).multiplyScalar(1100);
     this.moon.material.opacity = smoothstep(0.1, 0.6, nf); this.moonHalo.material.opacity = 0.45 * nf;
+    this.moon.material.color.set(0xe8eeff).lerp(new THREE.Color(0xff9a88), nf * 0.55); // bulan darah
+    this.moonHalo.material.color.set(0x9fb4ff).lerp(new THREE.Color(0xff6a5a), nf * 0.6);
     const lamp = smoothstep(0.2, 0.7, nf);
     for (const w of this.windowMats) w.emissiveIntensity = lerp(0.15, 2.2, lamp);
     this.flies.material.opacity = lamp * 0.9;
@@ -238,8 +250,13 @@ export class Village {
     const seated = players.filter((p) => !p.isMod);
     const mod = players.find((p) => p.isMod);
     const ids = new Set(seated.map((p) => p.id));
-    for (const [id, a] of this.avatars) if (!ids.has(id)) { this.scene.remove(a.root); a.label.remove(); a.grave && this.scene.remove(a.grave); this.avatars.delete(id); }
+    for (const [id, a] of this.avatars) if (!ids.has(id)) {
+      this.scene.remove(a.root); a.label.remove(); a.grave && this.scene.remove(a.grave); this.avatars.delete(id);
+      this.deathQueue = this.deathQueue.filter((x) => x !== a); if (this.cine?.a === a) this.cine = null;
+    }
     const n = seated.length, rad = Math.max(6, n * 0.75);
+    // saat podium: pemain hidup yang tidak naik podium mundur jadi penonton di belakang
+    const crowd = this.podiumIds.length ? seated.filter((p) => p.alive && !this.podiumIds.includes(p.id)).map((p) => p.id) : [];
     seated.forEach((p, i) => {
       let a = this.avatars.get(p.id);
       if (!a) {
@@ -251,30 +268,110 @@ export class Village {
         const hit = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 2.2, 8), new THREE.MeshBasicMaterial({ visible: false })); hit.position.y = 1.1; hit.userData.pid = p.id; root.add(hit);
         const label = document.createElement('div'); label.className = 'plabel'; this.labels.appendChild(label);
         this.scene.add(root);
-        a = { rig, root, ring, hit, label, angle: 0, deadT: 0, bubbleT: 0 };
+        a = { rig, root, ring, hit, label, angle: 0, deadT: 0, bubbleT: 0, wasAlive: p.alive };
+        if (!p.alive) a.deadPose = { x: -Math.PI / 2, z: 0, y: 0.15 };
         this.avatars.set(p.id, a);
       }
       a.p = p;
       const ang = (i / n) * Math.PI * 2 - Math.PI / 2;
-      a.target = new THREE.Vector3(Math.cos(ang) * rad, 0, Math.sin(ang) * rad);
-      a.target.y = heightAt(a.target.x, a.target.z);
+      a.seat = new THREE.Vector3(Math.cos(ang) * rad, 0, Math.sin(ang) * rad);
+      a.seat.y = heightAt(a.seat.x, a.seat.z);
+      const rank = this.podiumIds.indexOf(p.id);
+      a.onPodium = rank >= 0 && this.fx.spots;
+      const ci = crowd.indexOf(p.id);
+      if (a.onPodium) a.target = this.fx.spots[rank].clone();
+      else if (ci >= 0) {
+        // dua sayap kiri-kanan di belakang podium, tengah dikosongkan supaya juara 1 terlihat
+        const half = Math.ceil(crowd.length / 2), left = ci < half, j = left ? ci : ci - half, cnt = left ? half : crowd.length - half;
+        const f = cnt > 1 ? j / (cnt - 1) : 0.5, ca = left ? -Math.PI * (0.62 + 0.3 * f) : -Math.PI * (0.08 + 0.3 * f), cr = rad + 1.2;
+        a.target = new THREE.Vector3(Math.cos(ca) * cr, 0, Math.sin(ca) * cr); a.target.y = heightAt(a.target.x, a.target.z);
+      } else a.target = a.seat.clone();
+      a.rank = rank;
       if (!a.placed) { a.root.position.copy(a.target); a.placed = true; }
-      a.root.rotation.y = Math.atan2(-a.target.x, -a.target.z);
+      a.root.rotation.y = a.onPodium ? 0 : ci >= 0 ? Math.atan2(-a.target.x, 6 - a.target.z) : Math.atan2(-a.target.x, -a.target.z);
+      // transisi hidup → mati: antrekan animasi kematian sesuai penyebab
+      if (a.wasAlive && !p.alive && !a.death && !a.pending) { a.pending = { kind: p.cause || 'other', killer: p.killer }; this.deathQueue.push(a); }
+      a.wasAlive = p.alive;
       // werewolf terungkap di akhir game
       const showWolf = opts.reveal && p.role === 'werewolf';
       if (showWolf && !a.wolf) { a.wolf = makePlayerWerewolf(); a.root.add(a.wolf.root); a.rig.root.visible = false; a.wolfT = 0; }
       if (!showWolf && a.wolf) { a.root.remove(a.wolf.root); a.wolf = null; a.rig.root.visible = true; }
-      if (!p.alive && !a.grave) {
-        a.grave = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1, 0.18), this.stoneMat);
-        a.grave.position.copy(a.target).add(a.target.clone().setY(0).normalize().multiplyScalar(1.3)); a.grave.position.y += 0.4;
-        a.grave.lookAt(0, a.grave.position.y, 0); a.grave.castShadow = true; this.scene.add(a.grave);
-      }
-      if (p.alive && a.grave) { this.scene.remove(a.grave); a.grave = null; a.deadT = 0; a.rig.root.rotation.set(0, 0, 0); }
+      if (!p.alive && !a.grave && !a.pending && !a.death) this.makeGrave(a, true);
+      // jasad di sisi kamera disembunyikan saat podium supaya tidak menghalangi
+      const hideFront = this.podiumIds.length && !a.onPodium && !p.alive && a.seat.z > 1.5;
+      a.root.visible = !hideFront;
+      if (a.grave) a.grave.visible = !a.onPodium && !hideFront;
+      if (p.alive && (a.grave || a.deadPose || a.death || a.pending)) this.revive(a);
     });
     // moderator berdiri di dekat api
     this.modRig.root.visible = !!mod;
     if (mod) { this.modRig.root.position.set(0, heightAt(0, 2.6), 2.6); this.modRig.root.rotation.y = Math.PI; this.modId = mod.id; this.modName = mod.name; }
   }
+  makeGrave(a, instant) {
+    a.grave = new THREE.Group();
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1, 0.18), this.stoneMat); slab.position.y = 0.4; slab.castShadow = true;
+    const rune = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.34), new THREE.MeshBasicMaterial({ map: this.fx.circle.material.map, color: 0xff5040, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+    rune.position.set(0, 0.5, 0.095); slab.add(rune);
+    a.grave.add(slab);
+    a.grave.position.copy(a.seat).add(a.seat.clone().setY(0).normalize().multiplyScalar(1.3));
+    a.grave.lookAt(0, a.grave.position.y, 0); a.grave.scale.y = instant ? 1 : 0.001; a.graveT = instant ? 1 : 0;
+    this.scene.add(a.grave);
+  }
+  revive(a) {
+    if (a.grave) this.scene.remove(a.grave);
+    a.grave = null; a.deadPose = null; a.death = null; a.pending = null; a.deadT = 0;
+    this.deathQueue = this.deathQueue.filter((x) => x !== a);
+    a.rig.root.rotation.set(0, 0, 0); a.rig.root.position.set(0, 0, 0);
+    a.rig.root.children.filter((c) => c.isGroup && c.userData.arrow).forEach((c) => a.rig.root.remove(c));
+    for (const m of a.rig.mats || []) if (m.emissive) { m.emissive.setHex(0x000000); m.emissiveIntensity = 1; }
+  }
+  /** Pemain yang naik podium (urut peringkat 1,2,3) atau [] untuk menyembunyikan */
+  setPodium(ids) {
+    const next = (ids || []).slice(0, 3), key = next.join(',');
+    if (key === this.podiumIds.join(',')) return;
+    this.podiumIds = next;
+    this.fx.showPodium(next.length > 0);
+    if (next.length) { this.podiumCamT = 0; this.camHold = 0; }
+  }
+  shake(a) { this.shakeAmt = Math.max(this.shakeAmt, a); }
+  flashRed(a) { this.redPulse = Math.max(this.redPulse, a); }
+  startDeath(a) {
+    const pend = a.pending; a.pending = null;
+    let from = null;
+    if (pend.killer) { const k = this.avatars.get(pend.killer); if (k) from = (k.grave ? k.grave.position : k.root.position).clone(); }
+    a.death = this.fx.death(pend.kind, a, from);
+    this.cine = { a, t: 0, dur: a.death.dur + 0.5 }; this.camHold = 0;
+    this.cineGap = a.death.dur * 0.75;
+  }
+  poseDeath(a, dt) {
+    const d = a.death, t = (d.t += dt), r = a.rig.root;
+    let rx = 0, rz = 0, y = 0, crouch = 0, opts = {};
+    switch (d.kind) {
+      case 'wolf': crouch = seg(t, 0.3, 0.75) * 0.12; rx = -Math.PI / 2 * ease(seg(t, 0.8, 1.35)); y = 0.15 * seg(t, 0.8, 1.35); opts.aim = t < 0.8 && t > 0.4; break;
+      case 'vote': {
+        const lift = ease(seg(t, 0.6, 1.8)) * 1.2 * (1 - ease(seg(t, 2.05, 2.3)));
+        y = lift + 0.15 * seg(t, 2.1, 2.6); rx = Math.PI / 2 * ease(seg(t, 2.1, 2.6)) - Math.sin(seg(t, 0.6, 2.05) * Math.PI) * 0.25;
+        r.rotation.y = Math.sin(t * 2) * 0.15 * seg(t, 0.6, 1.5) * (1 - seg(t, 2, 2.1));
+        opts.aim = t > 0.8 && t < 2.05; break;
+      }
+      case 'poison': {
+        crouch = ease(seg(t, 0.4, 1.4)) * 0.38; rx = Math.PI / 2 * ease(seg(t, 1.6, 2.3)); y = 0.12 * seg(t, 1.6, 2.3);
+        const g = seg(t, 0.2, 1.5); for (const m of a.rig.mats || []) if (m.emissive) { m.emissive.setHex(0x22ff55); m.emissiveIntensity = g * (0.6 + Math.sin(t * 9) * 0.2); }
+        break;
+      }
+      case 'hunter': { const k = seg(t, 0.55, 0.95); rx = -Math.PI / 2 * (ease(k) + Math.sin(k * Math.PI) * 0.12); y = 0.15 * k; break; }
+      case 'guard': crouch = ease(seg(t, 0.9, 1.6)) * 0.35; rz = Math.PI / 2 * ease(seg(t, 1.6, 2.2)); y = 0.15 * seg(t, 1.6, 2.2); opts.aim = t < 0.9; break;
+      default: rx = -Math.PI / 2 * ease(seg(t, 0, 0.7)); y = 0.15 * seg(t, 0, 0.7);
+    }
+    r.rotation.x = rx; r.rotation.z = rz; r.position.y = y;
+    a.rig.update(dt, 0, { crouch, ...opts });
+    if (t >= d.dur) {
+      a.deadPose = { x: rx, z: rz, y }; a.death = null;
+      for (const m of a.rig.mats || []) if (m.emissive && d.kind === 'poison') m.emissiveIntensity = 0.15;
+      if (!a.grave && !a.p.alive) this.makeGrave(a, false);
+    }
+  }
+
   /** decorations: { [id]: { ring:'#hex', badge:'text', role:'🐺', you:true, selectable:true } } */
   decorate(map) { this.deco = map || {}; }
   bubble(id, text) { const a = this.avatars.get(id); if (a) { a.bubble = text.slice(0, 60); a.bubbleT = 4; } }
@@ -298,12 +395,26 @@ export class Village {
     const dt = Math.min(0.05, this.clock.getDelta()), t = this.clock.elapsedTime;
     this.uTime.value = t;
     this.applyTime(dt);
+    this.camera.position.sub(this.shakeOff);
+    this.cameraDirector(dt);
     this.controls.update();
+    this.shakeAmt = Math.max(0, this.shakeAmt - dt * 1.2);
+    this.shakeOff.set((Math.random() - 0.5), (Math.random() - 0.5), (Math.random() - 0.5)).multiplyScalar(this.shakeAmt * 0.6);
+    this.camera.position.add(this.shakeOff);
+    this.fx.update(dt); this.fx.ambienceUpdate(dt, t, this.nightFactor || 0); this.fx.podiumUpdate(dt);
+    this.redPulse = Math.max(0, this.redPulse - dt * 0.5);
+    this.grade.uniforms.uTime.value = t; this.grade.uniforms.uRed.value = this.redPulse * 0.6;
+    this.grade.uniforms.uVig.value = 0.75 + (this.nightFactor || 0) * 0.25;
+    // antrean kematian dimainkan satu per satu
+    this.cineGap -= dt;
+    if (this.deathQueue.length && this.cineGap <= 0) this.startDeath(this.deathQueue.shift());
     // api & kunang-kunang
     const fp = this.fireP.geometry.attributes.position;
     this.fireData.forEach((d, i) => { d.life += dt * 0.9 * d.s; if (d.life > 1) { d.life = 0; d.x = (Math.random() - 0.5) * 0.6; d.z = (Math.random() - 0.5) * 0.6; } fp.setXYZ(i, d.x * (1 - d.life), 0.3 + d.life * 2.2, d.z * (1 - d.life)); });
     fp.needsUpdate = true;
-    this.fireLight.intensity = 26 + Math.sin(t * 13) * 3 + Math.sin(t * 7.3) * 4 + Math.random() * 2;
+    this.fireOn += ((this.podiumIds.length ? 0 : 1) - this.fireOn) * Math.min(1, dt * 3);
+    this.fireLight.intensity = (26 + Math.sin(t * 13) * 3 + Math.sin(t * 7.3) * 4 + Math.random() * 2) * this.fireOn;
+    this.fireP.visible = this.fx.embers.visible = this.fireOn > 0.05;
     const ff = this.flies.geometry.attributes.position;
     this.fly.forEach((d, i) => ff.setXYZ(i, d.x + Math.sin(t * 0.5 + d.ph) * 1.5, heightAt(d.x, d.z) + d.y + Math.sin(t * 1.3 + d.ph) * 0.4, d.z + Math.cos(t * 0.4 + d.ph) * 1.5));
     ff.needsUpdate = true;
@@ -314,16 +425,24 @@ export class Village {
     for (const [id, a] of this.avatars) {
       const p = a.p, deco = this.deco?.[id] || {};
       a.root.position.lerp(a.target, Math.min(1, dt * 3));
-      if (!p.alive) { a.deadT = Math.min(1, a.deadT + dt * 2); a.rig.root.rotation.x = -a.deadT * Math.PI / 2; a.rig.root.position.y = 0.15 * a.deadT; }
+      const standing = p.alive || a.pending || a.onPodium;
+      if (a.onPodium) {
+        a.rig.root.rotation.set(0, 0, 0); a.rig.root.position.y = 0;
+        a.cheer = ((a.cheer || a.rank * 0.4) + dt * 0.7) % 1.6; // perayaan bergantian
+        if (a.wolf && !(a.wolfT > 0) && Math.random() < dt * 0.5) a.wolfT = 0.001;
+      } else if (a.death) this.poseDeath(a, dt);
+      else if (!p.alive && !a.pending && a.deadPose) { a.rig.root.rotation.x = a.deadPose.x; a.rig.root.rotation.z = a.deadPose.z; a.rig.root.position.y = a.deadPose.y; }
+      if (a.grave && a.graveT < 1) { a.graveT = Math.min(1, a.graveT + dt * 1.5); a.grave.scale.y = Math.max(0.001, ease(a.graveT)); }
       if (a.wolf) { a.wolf.update(dt, 0, { howl: a.wolfT > 0 ? a.wolfT : 0 }); if (a.wolfT > 0) { a.wolfT += dt * 0.4; if (a.wolfT > 1) a.wolfT = 0; } }
-      else if (p.alive) a.rig.update(dt, 0, { attack: a.waveT > 0 ? a.waveT : 0 });
+      else if (a.onPodium) a.rig.update(dt, 0, { attack: a.cheer < 1 ? a.cheer : 0, attackArm: a.rank % 2 });
+      else if (standing && !a.death) a.rig.update(dt, 0, { attack: a.waveT > 0 ? a.waveT : 0 });
       const showRing = deco.ring || (this.hoverId === id && deco.selectable);
       a.ring.material.opacity += ((showRing ? 0.9 : 0) - a.ring.material.opacity) * Math.min(1, dt * 10);
       if (deco.ring) a.ring.material.color.set(deco.ring); else if (this.hoverId === id) a.ring.material.color.set(0xffffff);
       a.ring.scale.setScalar(1 + (deco.ring ? Math.sin(t * 4) * 0.06 : 0));
       // label DOM
-      v.copy(a.root.position); v.y += p.alive ? 2.35 : 1.2; v.project(this.camera);
-      const off = v.z > 1;
+      v.copy(a.root.position); v.y += (p.alive || a.onPodium || a.pending) ? (a.wolf ? 3.3 : 2.35) : a.death ? 2.35 : 1.2; v.project(this.camera);
+      const off = v.z > 1 || !a.root.visible;
       a.label.style.display = off ? 'none' : '';
       if (!off) {
         a.label.style.transform = `translate(-50%,-100%) translate(${(v.x * 0.5 + 0.5) * W}px,${(-v.y * 0.5 + 0.5) * H}px)`;
@@ -335,6 +454,28 @@ export class Village {
     if (this.bloom.enabled && !this.low) this.composer.render(); else this.renderer.render(this.scene, this.camera);
   }
 }
+
+Village.prototype.cameraDirector = function (dt) {
+  const c = this.controls;
+  if (this.camHold > 0) { this.camHold -= dt; if (this.cine) this.cine.t += dt; return; }
+  let tgt = this.home, dist = null;
+  if (this.cine) {
+    this.cine.t += dt;
+    tgt = this.cine.a.root.position.clone().setY(this.cine.a.root.position.y + 1.1); dist = 11;
+    if (this.cine.t > this.cine.dur) this.cine = null;
+  } else if (this.podiumIds.length) {
+    // podium sedikit di atas tengah layar supaya tidak tertutup panel kontribusi
+    tgt = this.podiumAt.clone().add(new THREE.Vector3(0, 0.9, 2.6));
+    if (this.podiumCamT < 4) { this.podiumCamT += dt; this.camera.position.lerp(new THREE.Vector3(0, this.podiumAt.y + 3.6, this.podiumAt.z + 12.5), Math.min(1, dt * 2)); }
+  }
+  c.target.lerp(tgt, Math.min(1, dt * 2.2));
+  if (dist) {
+    const off = this.camera.position.clone().sub(c.target), len = off.length();
+    off.setLength(len + (dist - len) * Math.min(1, dt * 1.5));
+    if (off.y < 3) off.y += (3 - off.y) * dt * 2;
+    this.camera.position.copy(c.target).add(off);
+  }
+};
 
 function paint(geo, hex) {
   const c = new THREE.Color(hex), n = geo.attributes.position.count, a = new Float32Array(n * 3);
