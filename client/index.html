@@ -76,6 +76,7 @@ label.ck{display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:700}
 .tag{display:inline-block;font-size:11px;font-weight:800;border-radius:4px;padding:1px 7px;background:rgba(74,222,128,.15);color:#a7f3c0;letter-spacing:.06em;text-transform:uppercase;margin-top:3px}
 .tag.play{background:rgba(245,185,66,.18);color:var(--amber)}
 .tag.mod{background:rgba(167,139,250,.22);color:#ddd6fe;margin:0 0 0 4px;vertical-align:2px}
+.theme-pick{display:grid;gap:6px;font-weight:700;font-size:13px;color:var(--dim)}.theme-pick span{letter-spacing:.08em;text-transform:uppercase;font-family:Cinzel,serif;color:var(--gold2)}
 .empty{color:var(--dim);font-size:14px;padding:16px;text-align:center;border:1px dashed var(--line);border-radius:10px;font-style:italic}
 hr{border:0;border-top:1px solid var(--line);margin:2px 0}
 .shelf{display:grid;gap:10px}
@@ -235,6 +236,8 @@ hr{border:0;border-top:1px solid var(--line);margin:2px 0}
         <input id="inName" placeholder="Nama kamu" maxlength="16" autocomplete="nickname" />
         <div class="online-only" style="display:grid;gap:10px">
           <input id="inRoomName" placeholder="Nama desa (opsional)" maxlength="30" />
+          <label class="theme-pick" for="inTheme"><span>Tema desa</span>
+            <select id="inTheme"><option value="kampung">🌾 Kampung — sawah, ayam, jemuran, sumur</option><option value="pasar">🏮 Pasar Desa — lapak, lampion, gerobak</option><option value="modern">🏙️ Desa Modern — rumah minimalis, jalan, mobil</option></select></label>
           <div class="row" style="justify-content:space-between">
             <label class="ck"><input type="checkbox" id="ckMod" checked /> Host = Moderator</label>
             <label class="ck server-only list-only"><input type="checkbox" id="ckPublic" checked /> Tampilkan di daftar</label>

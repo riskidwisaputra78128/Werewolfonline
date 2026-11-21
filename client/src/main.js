@@ -17,6 +17,7 @@ const SS = { get: (k) => { try { return sessionStorage.getItem(k); } catch { ret
 let sid = SS.get('ww_sid');
 if (!sid) { sid = 's' + Math.random().toString(36).slice(2) + Date.now().toString(36); SS.set('ww_sid', sid); }
 $('inName').value = LS.get('ww_name') || '';
+const THEME_NAME = { kampung: '🌾 Kampung', pasar: '🏮 Pasar Desa', modern: '🏙️ Desa Modern' };
 
 const audio = new Audio();
 addEventListener('pointerdown', () => audio.init(), { once: true });
@@ -83,7 +84,7 @@ function renderRooms(rooms) {
   const el = $('roomList');
   el.innerHTML = rooms && rooms.length ? rooms.map((r) => `
     <div class="room ${r.phase === 'lobby' || r.phase === 'end' ? '' : 'busy'}"><div class="crest" aria-hidden="true">${r.phase === 'lobby' ? '🏡' : r.phase === 'end' ? '🏁' : '🔥'}</div><div class="info"><b>${esc(r.name)}</b>${r.hasMod ? ' <span class="tag mod">Mod</span>' : ''}
-      <small>${r.host ? 'Host ' + esc(r.host) + (r.hasMod ? ' (Moderator)' : '') + ' · ' : ''}${r.players}/16 pemain · ${esc(r.phaseName)}${r.day ? ' H-' + r.day : ''} · <span class="code">${esc(r.code)}</span></small>
+      <small>${r.theme && THEME_NAME[r.theme] ? THEME_NAME[r.theme] + ' · ' : ''}${r.host ? 'Host ' + esc(r.host) + (r.hasMod ? ' (Moderator)' : '') + ' · ' : ''}${r.players}/16 pemain · ${esc(r.phaseName)}${r.day ? ' H-' + r.day : ''} · <span class="code">${esc(r.code)}</span></small>
       <span class="tag ${r.phase === 'lobby' || r.phase === 'end' ? '' : 'play'}">${r.phase === 'lobby' ? 'Lobby' : r.phase === 'end' ? 'Selesai · bisa gabung' : 'Sedang main'}</span></div>
       <button class="b-green" data-join="${esc(r.code)}" ${r.phase === 'lobby' || r.phase === 'end' ? '' : 'disabled'}>Gabung</button></div>`).join('')
     : '<div class="empty">Belum ada room aktif. Buat room baru — room-mu akan langsung muncul di sini untuk semua pemain.</div>';
@@ -107,7 +108,7 @@ $('btnCreate').onclick = async () => {
   const opts = { name, roomName: $('inRoomName').value, hostIsMod: $('ckMod').checked, isPublic: $('ckPublic').checked };
   const r = MODE === 'static' ? await net.createRoom(name, opts) : await net.call('create', opts);
   busy = false;
-  if (!r.ok) { T = null; lobbyMsg(r.error); } else lobbyMsg('');
+  if (!r.ok) { T = null; lobbyMsg(r.error); } else { lobbyMsg(''); send('settings', { theme: $('inTheme').value }); }
 };
 $('btnRefresh').onclick = refreshRooms;
 $('btnJoinCode').onclick = () => { const c = $('inCode').value.trim(); if (c.length < 6) return lobbyMsg('Masukkan kode room 6 huruf.'); join(c); };
@@ -115,7 +116,12 @@ $('inCode').onkeydown = (e) => { if (e.key === 'Enter') $('btnJoinCode').click()
 $('btnOffline').onclick = () => {
   const name = myName() || 'Kamu';
   T = offline; offline.call('create', { name, bots: 7 });
+  setTimeout(() => offline.call('settings', { theme: $('inTheme').value }), 50);
 };
+// pratinjau tema di latar lobby
+$('inTheme').value = LS.get('ww_theme') || 'kampung';
+village.setTheme($('inTheme').value);
+$('inTheme').onchange = () => { LS.set('ww_theme', $('inTheme').value); village.setTheme($('inTheme').value); };
 // link undangan: #KODE atau ?room=KODE (Apps Script)
 function applyInvite(code) {
   code = String(code || '').toUpperCase();
@@ -129,7 +135,7 @@ function backToLobby(msg) {
   T = null; V = null; lastPhase = ''; revealShown = ''; endShown = false; lastLogT = 0; lastChatN = 0;
   $('hud').classList.add('hidden'); $('lobby').classList.remove('hidden');
   ['guide', 'reveal', 'end'].forEach((m) => $(m).classList.add('hidden'));
-  village.setPodium([]); village.sync([]); village.decorate({}); village.controls.autoRotate = true; village.setTimeOfDay(0.72);
+  village.setPodium([]); village.sync([]); village.setTheme($('inTheme').value); village.decorate({}); village.controls.autoRotate = true; village.setTimeOfDay(0.72);
   lobbyMsg(msg || '');
   if (!GAS) { try { history.replaceState(null, '', location.pathname + location.search.replace(/[?&]room=[A-Z0-9]+/i, '')); } catch { /* */ } }
   if (MODE === 'static') setStatus('online');
@@ -156,6 +162,7 @@ function onState(v) {
   }
   if (v.phase !== lastPhase) onPhaseChange(v, lastPhase);
   lastPhase = v.phase;
+  village.setTheme(v.settings?.theme || 'kampung');
   village.setPodium(v.phase === 'end' && v.podium ? v.podium.filter((r) => r.winner).slice(0, 3).map((r) => r.id) : []);
   village.sync(v.players, { reveal: v.phase === 'end' });
   if (TIME[v.phase] != null) village.setTimeOfDay(v.phase === 'end' && v.winner === 'wolf' ? 0.95 : TIME[v.phase]);
@@ -407,6 +414,7 @@ function renderWarga() {
       <div class="row"><label for="sWolves" style="font-weight:700">Werewolf:</label><select id="sWolves" style="width:auto">${[1, 2, 3, 4, 5].map((n) => `<option ${s.wolves === n ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
       <div class="grid2">${SPECIALS.map((r) => `<label class="ck"><input type="checkbox" data-role="${r}" ${s.roles[r] ? 'checked' : ''}/> ${ROLES[r].icon} ${ROLES[r].name}</label>`).join('')}</div>
       <div class="grid3"><div><label for="tN">Malam (dtk)</label><input id="tN" type="number" min="15" max="300" value="${s.timers.night}"/></div><div><label for="tD">Diskusi</label><input id="tD" type="number" min="15" max="300" value="${s.timers.day}"/></div><div><label for="tV">Voting</label><input id="tV" type="number" min="15" max="300" value="${s.timers.vote}"/></div></div>
+      <div class="row"><label for="sTheme" style="font-weight:700">Tema desa:</label><select id="sTheme" style="width:auto">${Object.entries(THEME_NAME).map(([k, n]) => `<option value="${k}" ${s.theme === k ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
       <label class="ck"><input type="checkbox" id="sReveal" ${s.revealRoles ? 'checked' : ''}/> Ungkap peran saat pemain mati</label>
       ${MODE === 'server' || (MODE === 'static' && hasFirebase()) ? `<label class="ck"><input type="checkbox" id="sPublic" ${v.isPublic ? 'checked' : ''}/> Room publik (tampil di daftar)</label>` : ''}
       ${v.isHost ? `<label class="ck"><input type="checkbox" id="sMod" ${v.modId === v.you ? 'checked' : ''}/> Saya jadi Moderator (tidak ikut bermain)</label>` : ''}
@@ -427,6 +435,7 @@ function renderWarga() {
   el.querySelectorAll('[data-role]').forEach((c) => (c.onchange = () => set({ roles: { [c.dataset.role]: c.checked } })));
   for (const [id, k] of [['tN', 'night'], ['tD', 'day'], ['tV', 'vote']]) el.querySelector('#' + id)?.addEventListener('change', (e) => set({ timers: { [k]: +e.target.value } }));
   el.querySelector('#sReveal')?.addEventListener('change', (e) => set({ revealRoles: e.target.checked }));
+  el.querySelector('#sTheme')?.addEventListener('change', (e) => set({ theme: e.target.value }));
   el.querySelector('#sPublic')?.addEventListener('change', (e) => set({ isPublic: e.target.checked }));
   el.querySelector('#sMod')?.addEventListener('change', (e) => send('moderator', { on: e.target.checked }));
   el.querySelectorAll('[data-kick]').forEach((b) => (b.onclick = () => { if (confirmInline('k' + b.dataset.kick)) send('kick', { target: b.dataset.kick }); }));

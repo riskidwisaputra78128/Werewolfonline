@@ -12,6 +12,7 @@ import * as T from './textures.js';
 import { createBiped, clothMat, makePlayerWerewolf, makeElder } from './characters.js';
 import { FX, gradePass, disposeDeep } from './effects.js';
 import { createHero, upgradeWolf } from './heroes.js';
+import { buildTheme } from './themes.js';
 import { loadHumans, createReal, humansReady, VARIANTS } from './realhumans.js';
 const MOD_VARIANT = { id: 'mod', body: 'female', outfit: '#f2efe6', accent: '#d8b06a', skin: 1, head: 'halo', weapon: 'staff', orb: 0xffe2a0, cape: 0xf2efe6 };
 const ease = (t) => t * t * (3 - 2 * t);
@@ -61,6 +62,7 @@ export class Village {
     this.buildLights(); this.buildSky(); this.buildGround(); this.buildForest(); this.buildGrass(); this.buildHouses(); this.buildFire(); this.buildFireflies();
     this.fx = new FX(this); this.fx.ambience(heightAt);
     this.podiumAt = new THREE.Vector3(0, heightAt(0, 0), 0); this.fireOn = 1; this.fx.buildPodium(this.podiumAt);
+    this.setTheme('kampung');
     this.fx.warmup();
     // model manusia realistis (GLB) dimuat di latar; begitu siap, avatar diganti
     loadHumans().then((lib) => { if (lib) this.swapRigs(); });
@@ -172,8 +174,32 @@ export class Village {
       im.setMatrixAt(i, m); im.setColorAt(i, new THREE.Color().setHSL(0.22 + R() * 0.06, 0.4, 0.4 + R() * 0.3)); i++;
     }
     im.receiveShadow = true; this.scene.add(im);
+    this.grass = im; this.grassM = new Float32Array(im.instanceMatrix.array);
+  }
+  /** sembunyikan rumput di dalam radius r (plaza/jalan tema) */
+  clearGrass(r) {
+    const arr = this.grass.instanceMatrix.array, src = this.grassM;
+    for (let i = 0; i < this.grass.count; i++) {
+      const o = i * 16, x = src[o + 12], z = src[o + 14], hide = r > 0 && Math.hypot(x, z) < r;
+      for (let k = 0; k < 16; k++) arr[o + k] = hide ? (k === 15 ? 1 : 0) : src[o + k];
+    }
+    this.grass.instanceMatrix.needsUpdate = true;
+  }
+  /** tema desa: 'kampung' | 'pasar' | 'modern' */
+  setTheme(name) {
+    name = ['kampung', 'pasar', 'modern'].includes(name) ? name : 'kampung';
+    if (this.themeName === name) return;
+    this.themeName = name;
+    this.themes = this.themes || {};
+    if (!this.themes[name]) this.themes[name] = buildTheme(name, { scene: this.scene, heightAt, uTime: this.uTime, stoneMat: this.stoneMat });
+    for (const [k, t] of Object.entries(this.themes)) t.group.visible = k === name;
+    const t = this.themes[name];
+    this.cabins.visible = !!t.cabins;
+    this.clearGrass(t.grassClear || 0);
+    this.theme = t;
   }
   buildHouses() {
+    this.cabins = new THREE.Group(); this.scene.add(this.cabins);
     const wood = T.woodPlanks(), roof = T.roofShingles(), rock = T.rockTexture();
     const wallMat = new THREE.MeshStandardMaterial({ map: T.tex.toTexture(wood, 1), normalMap: T.normalFrom(wood, 2), roughness: 0.85 });
     const roofMat = new THREE.MeshStandardMaterial({ map: T.tex.toTexture(roof, 2), normalMap: T.normalFrom(roof, 3, 2), roughness: 0.9 });
@@ -195,7 +221,7 @@ export class Village {
       g.add(base, walls, rf, ch, door);
       g.traverse((o) => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; } });
       g.position.set(x, heightAt(x, z), z); g.lookAt(0, g.position.y, 0);
-      this.scene.add(g);
+      this.cabins.add(g);
     }
   }
   buildFire() {
@@ -435,6 +461,7 @@ export class Village {
     this.shakeOff.set((Math.random() - 0.5), (Math.random() - 0.5), (Math.random() - 0.5)).multiplyScalar(this.shakeAmt * 0.6);
     this.camera.position.add(this.shakeOff);
     this.fx.update(dt); this.fx.ambienceUpdate(dt, t, this.nightFactor || 0); this.fx.podiumUpdate(dt);
+    this.theme?.update(dt, t, this.nightFactor || 0);
     this.redPulse = Math.max(0, this.redPulse - dt * 0.5);
     this.grade.uniforms.uTime.value = t; this.grade.uniforms.uRed.value = this.redPulse * 0.6;
     this.grade.uniforms.uVig.value = 0.75 + (this.nightFactor || 0) * 0.25;

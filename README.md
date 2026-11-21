@@ -54,6 +54,10 @@ Daftar room dibaca dari `meta` tiap room di `ww/rooms`, jadi cukup rules yang me
 - Chat umum, chat rahasia serigala, chat arwah, plus gelembung chat di atas avatar.
 - Desa 3D: siang/malam mengikuti fase, klik avatar untuk memilih target, nisan untuk pemain mati, werewolf berubah wujud di akhir.
 - Bot pengisi dan latihan offline vs 7 bot.
+- **3 tema desa** (dipilih host saat membuat room / di panel pengaturan lobby, sama untuk semua pemain):
+  - 🌾 **Kampung** — rumah panggung beratap jerami, sawah padi bergoyang, ayam berkeliaran & mematuk, jemuran berkibar, sumur dengan engkol, kincir air, asap dapur, obor.
+  - 🏮 **Pasar Desa** — alun-alun berbatu, lapak beratap kain belang (buah, sayur, ikan, kain, gerabah, roti, sate), untaian bendera & lampion, gerobak, tong, merpati, asap panggangan.
+  - 🏙️ **Desa Modern** — rumah minimalis kaca + panel surya, plaza berubin, jalan aspal melingkar dengan mobil berjalan (lampu menyala malam), lampu jalan, bangku taman, papan nama bercahaya.
 - **16 warga berbeda dalam 5 golongan**: Orang Tua (kakek beruban, bertongkat, agak bungkuk), Nenek (beruban, rok panjang, tongkat/lentera), Laki-laki Muda, Cewek Muda Stylish, dan Anak-anak. Semua punya animasi bernapas & bergerak saat diam.
 - **Karakter manusia realistis** (2 model GLB ber-rig — pria & wanita — yang diubah menjadi orang tua dan anak-anak) dengan animasi idle, tarian kemenangan di podium, plus aura & kristal warna pemain. File ada di `deploy/web/models/` — ikut ter-upload saat deploy Vercel/Netlify. Versi Apps Script tidak bisa memuat file model, jadi otomatis memakai karakter bawaan.
 - Karakter bawaan (cadangan) bergaya fantasi: jubah berbordir yang berkibar, cape, pauldron, rambut & telinga elf acak, orb sihir, tongkat, kristal melayang, aura warna pemain. Moderator bersayap dengan halo.

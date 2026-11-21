@@ -50,6 +50,7 @@ export class Game {
       roles: { seer: true, doctor: true, hunter: true, judge: true, guardian: false, witch: false },
       timers: { night: 45, day: 90, vote: 40 },
       revealRoles: true,
+      theme: 'kampung', // tema desa: kampung | pasar | modern
     };
     this.phase = 'lobby';
     this.day = 0;
@@ -148,6 +149,7 @@ export class Game {
     if (s.timers) for (const k of ['night', 'day', 'vote']) if (s.timers[k]) this.settings.timers[k] = Math.max(15, Math.min(300, s.timers[k] | 0));
     if ('revealRoles' in s) this.settings.revealRoles = !!s.revealRoles;
     if ('isPublic' in s) this.isPublic = !!s.isPublic;
+    if (['kampung', 'pasar', 'modern'].includes(s.theme)) this.settings.theme = s.theme;
     this.emit();
   }
   setModerator(by, on) {
