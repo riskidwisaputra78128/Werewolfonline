@@ -1,3 +1,13 @@
+---
+title: Werewolf Online
+emoji: 🐺
+colorFrom: red
+colorTo: indigo
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # 🐺 Werewolf Online — Desa 3D Multiplayer
 
 Game social deduction Werewolf yang dimainkan bareng teman di browser: buat room, bagikan kode atau link, lalu main realtime di desa 3D dengan siklus siang–malam.
@@ -14,7 +24,14 @@ Game social deduction Werewolf yang dimainkan bareng teman di browser: buat room
 
 Versi **tanpa server** (Netlify/Vercel/Pages/Apps Script) memakai **P2P (WebRTC via PeerJS)**: browser host menjalankan game, pemain lain tersambung langsung ke host. Hal yang perlu diketahui:
 - Host harus membiarkan tab game terbuka selama permainan. Kalau host menutup tab, room berakhir. Sebaiknya host bermain dari laptop.
-- Tidak ada daftar room publik. Gabung lewat **kode room** atau **link undangan** (tombol 🔗 Salin undangan).
+- Versi P2P (tanpa Firebase) tidak punya daftar room publik — gabung lewat **kode room** atau **link undangan**.
+- Versi **Firebase** menampilkan **daftar room aktif** di halaman awal: pemain tinggal sentuh *Gabung*, tanpa kode. Room otomatis hilang dari daftar saat host keluar/menutup tab, dan sisa room yatim dibersihkan sendiri. Host bisa mematikan *Tampilkan di daftar* untuk room privat.
+
+### Rules Firebase Realtime Database
+Daftar room disimpan di `ww/lobby`, jadi rules harus mengizinkan path itu juga, misalnya:
+```json
+{ "rules": { "ww": { ".read": true, ".write": true } } }
+```
 - Pada jaringan yang sangat ketat (sebagian WiFi kantor), koneksi bisa gagal. Coba jaringan lain atau hotspot HP.
 
 ### Netlify (paling mudah)

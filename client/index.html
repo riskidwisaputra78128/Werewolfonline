@@ -60,6 +60,10 @@ h1,h2,.cinzel{font-family:Cinzel,serif}
 .tag{display:inline-block;font-size:11.5px;font-weight:800;border-radius:6px;padding:1px 7px;background:rgba(34,197,94,.18);color:#86efac}
 .tag.play{background:rgba(245,185,66,.18);color:var(--amber)}
 .empty{color:var(--dim);font-size:14px;padding:10px 0}
+.room .crest{width:40px;height:40px;border-radius:10px;display:grid;place-items:center;font-size:20px;background:rgba(56,189,248,.12);flex:none}
+.room.busy{opacity:.75}.room.busy .crest{background:rgba(245,185,66,.14)}
+.room .code{font-family:ui-monospace,monospace;letter-spacing:1px}
+.tag.mod{background:rgba(139,92,246,.25);color:#ddd6fe}
 hr{border:0;border-top:1px solid var(--line);margin:2px 0}
 
 /* ---------- HUD ---------- */
@@ -148,6 +152,22 @@ hr{border:0;border-top:1px solid var(--line);margin:2px 0}
   #dock{bottom:8px;padding:12px}
 }
 </style>
+<script>
+  /* Server TURN (Metered Open Relay, gratis 20 GB/bulan) supaya pemain beda jaringan bisa join.
+     Isi dengan URL dari dashboard Metered, contoh:
+     https://namaapp.metered.live/api/v1/turn/credentials?apiKey=XXXX  */
+  window.WW_TURN_URL = "";
+  /* Firebase Realtime Database: kalau diisi, game memakai Firebase (lebih stabil dari P2P). */
+  window.WW_FIREBASE = {
+    apiKey: "AIzaSyDADDkfjjsxud1KsL-hQ-zMEkYaCpA_zbY",
+    authDomain: "risky-3a77e.firebaseapp.com",
+    databaseURL: "https://risky-3a77e-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "risky-3a77e",
+    storageBucket: "risky-3a77e.firebasestorage.app",
+    messagingSenderId: "581884662106",
+    appId: "1:581884662106:web:0c7ee2e148548f81d2a363"
+  };
+</script>
 </head>
 <body>
 <canvas id="scene"></canvas>
@@ -163,15 +183,15 @@ hr{border:0;border-top:1px solid var(--line);margin:2px 0}
       <input id="inRoomName" placeholder="Nama desa (opsional)" maxlength="30" />
       <div class="row" style="justify-content:space-around">
         <label class="ck"><input type="checkbox" id="ckMod" checked /> Host = Moderator</label>
-        <label class="ck server-only"><input type="checkbox" id="ckPublic" checked /> Publik</label>
+        <label class="ck server-only list-only"><input type="checkbox" id="ckPublic" checked /> Tampilkan di daftar</label>
       </div>
     </div>
     <button class="b-cyan online-only" id="btnCreate">+ Buat Room Baru</button>
     <div class="online-only">
       <hr />
-      <div class="server-only"><div class="row" style="justify-content:space-between;margin:8px 0"><b>🏠 Room aktif (sentuh untuk gabung)</b><button id="btnRefresh">🔄 Refresh</button></div>
+      <div class="server-only list-only"><div class="row" style="justify-content:space-between;margin:8px 0"><b>🏠 Room aktif (sentuh untuk gabung)</b><button id="btnRefresh">🔄 Refresh</button></div>
       <div class="rooms" id="roomList"><div class="empty">Memuat…</div></div></div>
-      <div class="muted static-only" style="font-size:13.5px;margin:8px 0">Punya kode dari teman? Masukkan di bawah. Atau buka link undangan yang dibagikan host.</div>
+      <div class="muted static-only" style="font-size:13.5px;margin:8px 0">Room privat? Masukkan kodenya di bawah, atau buka link undangan dari host.</div>
       <div class="row" style="margin-top:10px"><input id="inCode" class="grow" placeholder="Kode room (6 huruf)" maxlength="6" style="text-transform:uppercase" /><button id="btnJoinCode">Gabung Kode</button></div>
     </div>
     <button id="btnOffline">🤖 Latihan offline vs 7 bot</button>

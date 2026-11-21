@@ -43,12 +43,29 @@ export class OnlineTransport extends Emitter {
 
 // ======================= P2P (PeerJS / WebRTC) =======================
 const PEER_PREFIX = 'wwdesa3d-';
-function peerOptions() {
+let iceCache;
+/** Ambil server TURN dari window.WW_TURN_URL (Metered Open Relay) bila diisi */
+async function iceServers() {
+  if (iceCache !== undefined) return iceCache;
+  const url = typeof window !== 'undefined' && window.WW_TURN_URL;
+  iceCache = null;
+  if (url) {
+    try {
+      const r = await fetch(url);
+      const list = await r.json();
+      if (Array.isArray(list) && list.length) iceCache = [{ urls: 'stun:stun.l.google.com:19302' }, ...list];
+    } catch (e) { console.warn('[TURN] gagal ambil kredensial, pakai bawaan PeerJS', e); }
+  }
+  return iceCache;
+}
+async function peerOptions() {
+  const ice = await iceServers();
+  const extra = ice ? { config: { iceServers: ice } } : {};
   // ?peer=host:port untuk server PeerJS sendiri (opsional)
   const m = (typeof location !== 'undefined' && location.search.match(/[?&]peer=([^&]+)/)) || null;
-  if (!m) return { debug: 1 };
+  if (!m) return { debug: 1, ...extra };
   const [host, port] = decodeURIComponent(m[1]).split(':');
-  return { host, port: +port || 9000, path: '/', secure: location.protocol === 'https:' && host !== 'localhost', debug: 1 };
+  return { host, port: +port || 9000, path: '/', secure: location.protocol === 'https:' && host !== 'localhost', debug: 1, ...extra };
 }
 
 export class P2PTransport extends Emitter {
@@ -210,9 +227,10 @@ export class P2PTransport extends Emitter {
   }
 }
 
-function openPeer(id) {
+async function openPeer(id) {
+  const opts = await peerOptions();
   return new Promise((res, rej) => {
-    const p = id ? new Peer(id, peerOptions()) : new Peer(peerOptions());
+    const p = id ? new Peer(id, opts) : new Peer(opts);
     const t = setTimeout(() => { p.destroy(); rej({ type: 'timeout' }); }, 15000);
     p.once('open', () => { clearTimeout(t); res(p); });
     p.once('error', (e) => { clearTimeout(t); p.destroy(); rej(e); });

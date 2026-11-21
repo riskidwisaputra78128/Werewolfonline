@@ -1,5 +1,6 @@
 import { Village } from './village.js';
 import { OnlineTransport, OfflineTransport, P2PTransport } from './transport.js';
+import { FirebaseTransport, hasFirebase, watchRooms } from './fbtransport.js';
 import { ROLES, SPECIALS } from '../../shared/engine.js';
 import { Audio } from './audio.js';
 
@@ -31,7 +32,7 @@ function setStatus(s) {
   const dot = $('dot');
   dot.className = 'dot ' + (s === 'online' ? 'on' : s === 'error' ? 'err' : '');
   if (MODE === 'static') {
-    $('statusText').textContent = s === 'reconnecting' ? 'Koneksi terputus, mencoba menyambung ulang…' : 'Mode tanpa server · pemain tersambung langsung ke browser host';
+    $('statusText').textContent = s === 'reconnecting' ? 'Koneksi terputus, mencoba menyambung ulang…' : (hasFirebase() ? 'Online via Firebase · siap main bareng' : 'Mode tanpa server · pemain tersambung langsung ke browser host');
     return;
   }
   $('statusText').textContent = s === 'online' ? 'Terhubung ke server — siap main online' : s === 'error' ? 'Server tidak terjangkau. Kamu tetap bisa latihan offline.' : 'Terputus, mencoba menyambung ulang…';
@@ -40,9 +41,15 @@ if (MODE === 'offline') {
   document.querySelectorAll('.online-only').forEach((e) => e.classList.add('hidden'));
   $('statusText').textContent = 'Versi demo offline — main melawan bot.';
 } else if (MODE === 'static') {
-  net = new P2PTransport(sid);
+  net = hasFirebase() ? new FirebaseTransport(sid) : new P2PTransport(sid);
   document.body.classList.add('static');
   document.querySelectorAll('.server-only').forEach((e) => e.classList.add('hidden'));
+  if (hasFirebase()) {
+    // daftar room otomatis di halaman awal (tanpa perlu masukkan kode)
+    document.body.classList.add('fb');
+    document.querySelectorAll('.list-only').forEach((e) => e.classList.remove('hidden'));
+    startRoomWatch();
+  }
   setStatus('online'); $('dot').className = 'dot on';
 } else {
   net = new OnlineTransport(sid);
@@ -57,15 +64,25 @@ if (net) {
 offline.on('state', (v) => { if (T === offline) onState(v); });
 offline.on('left', () => backToLobby());
 
-async function refreshRooms() { if (MODE !== 'server' || !net) return; const r = await net.call('rooms'); if (r.ok) renderRooms(r.rooms); }
+let stopRoomWatch = null;
+function startRoomWatch() {
+  if (stopRoomWatch) return;
+  stopRoomWatch = watchRooms((rooms, err) => {
+    if (err) { $('roomList').innerHTML = `<div class="empty">Daftar room tidak bisa dimuat: ${esc(err)}</div>`; return; }
+    renderRooms(rooms);
+  });
+}
+async function refreshRooms() {
+  if (MODE === 'static' && hasFirebase()) { stopRoomWatch?.(); stopRoomWatch = null; startRoomWatch(); return; }
+  if (MODE !== 'server' || !net) return; const r = await net.call('rooms'); if (r.ok) renderRooms(r.rooms); }
 function renderRooms(rooms) {
   const el = $('roomList');
   el.innerHTML = rooms && rooms.length ? rooms.map((r) => `
-    <div class="room"><div class="info"><b>Room ${esc(r.code)}</b> · ${esc(r.name)}${r.hasMod ? ' · Mod' : ''}
-      <small>${r.players}/16 pemain · ${esc(r.phaseName)}${r.day ? ' H-' + r.day : ''}</small>
+    <div class="room ${r.phase === 'lobby' ? '' : 'busy'}"><div class="crest" aria-hidden="true">${r.phase === 'lobby' ? '🏡' : '🔥'}</div><div class="info"><b>${esc(r.name)}</b>${r.hasMod ? ' <span class="tag mod">Mod</span>' : ''}
+      <small>${r.host ? 'Host ' + esc(r.host) + ' · ' : ''}${r.players}/16 pemain · ${esc(r.phaseName)}${r.day ? ' H-' + r.day : ''} · <span class="code">${esc(r.code)}</span></small>
       <span class="tag ${r.phase === 'lobby' ? '' : 'play'}">${r.phase === 'lobby' ? 'Lobby' : 'Sedang main'}</span></div>
       <button class="b-green" data-join="${esc(r.code)}" ${r.phase === 'lobby' ? '' : 'disabled'}>Gabung</button></div>`).join('')
-    : '<div class="empty">Belum ada room publik. Buat room baru dan bagikan kodenya.</div>';
+    : '<div class="empty">Belum ada room aktif. Buat room baru — room-mu akan langsung muncul di sini untuk semua pemain.</div>';
   el.querySelectorAll('[data-join]').forEach((b) => (b.onclick = () => join(b.dataset.join)));
 }
 const myName = () => { const n = $('inName').value.trim(); if (n) LS.set('ww_name', n); return n; };
@@ -340,7 +357,7 @@ function renderWarga() {
       <div class="grid2">${SPECIALS.map((r) => `<label class="ck"><input type="checkbox" data-role="${r}" ${s.roles[r] ? 'checked' : ''}/> ${ROLES[r].icon} ${ROLES[r].name}</label>`).join('')}</div>
       <div class="grid3"><div><label for="tN">Malam (dtk)</label><input id="tN" type="number" min="15" max="300" value="${s.timers.night}"/></div><div><label for="tD">Diskusi</label><input id="tD" type="number" min="15" max="300" value="${s.timers.day}"/></div><div><label for="tV">Voting</label><input id="tV" type="number" min="15" max="300" value="${s.timers.vote}"/></div></div>
       <label class="ck"><input type="checkbox" id="sReveal" ${s.revealRoles ? 'checked' : ''}/> Ungkap peran saat pemain mati</label>
-      ${MODE === 'server' ? `<label class="ck"><input type="checkbox" id="sPublic" ${v.isPublic ? 'checked' : ''}/> Room publik (tampil di daftar)</label>` : ''}
+      ${MODE === 'server' || (MODE === 'static' && hasFirebase()) ? `<label class="ck"><input type="checkbox" id="sPublic" ${v.isPublic ? 'checked' : ''}/> Room publik (tampil di daftar)</label>` : ''}
       ${v.isHost ? `<label class="ck"><input type="checkbox" id="sMod" ${v.modId === v.you ? 'checked' : ''}/> Saya jadi Moderator (tidak ikut bermain)</label>` : ''}
       <div class="muted" style="font-size:13px">Rencana: ${esc(v.planned)}</div></div>`;
   }
