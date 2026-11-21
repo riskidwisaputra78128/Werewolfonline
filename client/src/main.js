@@ -17,7 +17,7 @@ const SS = { get: (k) => { try { return sessionStorage.getItem(k); } catch { ret
 let sid = SS.get('ww_sid');
 if (!sid) { sid = 's' + Math.random().toString(36).slice(2) + Date.now().toString(36); SS.set('ww_sid', sid); }
 $('inName').value = LS.get('ww_name') || '';
-const THEME_NAME = { kampung: '🌾 Kampung', pasar: '🏮 Pasar Desa', modern: '🏙️ Desa Modern' };
+const THEME_NAME = { kampung: '🌾 Kampung', pasar: '🏮 Pasar Desa', modern: '🏙️ Desa Modern', kantor: '🏢 Kantor TBR' };
 
 const audio = new Audio();
 addEventListener('pointerdown', () => audio.init(), { once: true });

@@ -126,7 +126,7 @@ export class Village {
     g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.computeVertexNormals();
     const det = T.groundDetail();
     const ground = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, map: T.tex.toTexture(det, 70), normalMap: T.normalFrom(det, 3, 70), roughness: 0.95 }));
-    ground.receiveShadow = true; this.scene.add(ground);
+    ground.receiveShadow = true; this.scene.add(ground); this.ground = ground;
   }
   buildForest() {
     const parts = [];
@@ -146,7 +146,7 @@ export class Village {
       m.compose(new THREE.Vector3(x, heightAt(x, z) - 0.3, z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), R() * 6), new THREE.Vector3(s, s * (0.9 + R() * 0.3), s));
       im.setMatrixAt(i, m); im.setColorAt(i, new THREE.Color().setHSL(0.27, 0.3, 0.7 + R() * 0.2));
     }
-    im.castShadow = im.receiveShadow = true; this.scene.add(im);
+    im.castShadow = im.receiveShadow = true; this.scene.add(im); this.forest = im;
   }
   buildGrass() {
     const v = [], cl = [];
@@ -187,14 +187,19 @@ export class Village {
   }
   /** tema desa: 'kampung' | 'pasar' | 'modern' */
   setTheme(name) {
-    name = ['kampung', 'pasar', 'modern'].includes(name) ? name : 'kampung';
+    name = ['kampung', 'pasar', 'modern', 'kantor'].includes(name) ? name : 'kampung';
     if (this.themeName === name) return;
     this.themeName = name;
     this.themes = this.themes || {};
-    if (!this.themes[name]) this.themes[name] = buildTheme(name, { scene: this.scene, heightAt, uTime: this.uTime, stoneMat: this.stoneMat });
+    if (!this.themes[name]) this.themes[name] = buildTheme(name, { scene: this.scene, heightAt, uTime: this.uTime, stoneMat: this.stoneMat, village: this });
     for (const [k, t] of Object.entries(this.themes)) t.group.visible = k === name;
     const t = this.themes[name];
     this.cabins.visible = !!t.cabins;
+    // tema dalam ruangan: sembunyikan langit, hutan, tanah, api unggun, kunang-kunang, kabut tanah
+    const out = !t.indoor; this.indoor = !!t.indoor;
+    for (const o of [this.sky, this.stars, this.moon, this.forest, this.ground, this.fireGroup, this.flies]) if (o) o.visible = out;
+    this.fx.fog?.forEach((f) => (f.visible = out));
+    this.scene.background = out ? null : new THREE.Color(0x1a1b1e);
     this.clearGrass(t.grassClear || 0);
     this.theme = t;
   }
@@ -229,7 +234,7 @@ export class Village {
     const f = new THREE.Group();
     for (let i = 0; i < 5; i++) { const l = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, 1.6, 6), logMat); l.rotation.z = Math.PI / 2 - 0.5; l.rotation.y = (i / 5) * 6.28; l.position.y = 0.3; l.castShadow = true; f.add(l); }
     for (let i = 0; i < 12; i++) { const s = new THREE.Mesh(new THREE.DodecahedronGeometry(0.25), this.stoneMat); s.position.set(Math.cos(i / 12 * 6.28) * 1.1, 0.1, Math.sin(i / 12 * 6.28) * 1.1); s.castShadow = true; f.add(s); }
-    f.position.y = heightAt(0, 0); this.scene.add(f);
+    f.position.y = heightAt(0, 0); this.scene.add(f); this.fireGroup = f;
     this.fireLight = new THREE.PointLight(0xff8a3a, 30, 30, 1.5); this.fireLight.position.set(0, f.position.y + 1.3, 0);
     this.fireLight.castShadow = !this.low; this.fireLight.shadow.mapSize.set(512, 512); this.scene.add(this.fireLight);
     const n = 140; this.fireData = Array.from({ length: n }, () => ({ life: Math.random(), x: 0, z: 0, s: 0.5 + Math.random() }));
@@ -396,7 +401,8 @@ export class Village {
     if (pend.killer) { const k = this.avatars.get(pend.killer); if (k) from = (k.grave ? k.grave.position : k.root.position).clone(); }
     a.death = this.fx.death(pend.kind, a, from);
     // simpan posisi kamera sebelum zoom-in, untuk dikembalikan setelah animasi
-    if (!this.cine && !(this.restoreT > 0)) { this.preCam = this.camera.position.clone(); this.preTarget = this.controls.target.clone(); }
+    // posisi kamera ASLI disimpan sekali saja (sebelum korban pertama); tidak ditimpa oleh korban berikutnya
+    if (!this.preCam) { this.preCam = this.camera.position.clone(); this.preTarget = this.controls.target.clone(); }
     this.cine = { a, t: 0, dur: a.death.dur + 0.5 }; this.camHold = 0; this.restoreT = 0;
     this.cineGap = a.death.dur + 0.9; // antre penuh: korban berikutnya baru mulai setelah animasi ini selesai
     this.onDeathStart?.(a.p.id, a.death.dur + 0.9);
@@ -472,7 +478,7 @@ export class Village {
     const fp = this.fireP.geometry.attributes.position;
     this.fireData.forEach((d, i) => { d.life += dt * 0.9 * d.s; if (d.life > 1) { d.life = 0; d.x = (Math.random() - 0.5) * 0.6; d.z = (Math.random() - 0.5) * 0.6; } fp.setXYZ(i, d.x * (1 - d.life), 0.3 + d.life * 2.2, d.z * (1 - d.life)); });
     fp.needsUpdate = true;
-    this.fireOn += ((this.podiumIds.length ? 0 : 1) - this.fireOn) * Math.min(1, dt * 3);
+    this.fireOn += ((this.podiumIds.length || this.indoor ? 0 : 1) - this.fireOn) * Math.min(1, dt * 3);
     this.fireLight.intensity = (26 + Math.sin(t * 13) * 3 + Math.sin(t * 7.3) * 4 + Math.random() * 2) * this.fireOn;
     this.fireP.visible = this.fx.embers.visible = this.fireOn > 0.05;
     const ff = this.flies.geometry.attributes.position;
@@ -518,13 +524,19 @@ export class Village {
 
 Village.prototype.cameraDirector = function (dt) {
   const c = this.controls;
-  if (this.camHold > 0) { this.camHold -= dt; if (this.cine) this.cine.t += dt; this.restoreT = 0; return; }
+  if (this.camHold > 0) {
+    this.camHold -= dt; if (this.cine) this.cine.t += dt;
+    if (this.restoreT > 0) { this.restoreT = 0; this.preCam = null; } // pemain menggeser kamera sendiri saat kembali → biarkan
+    return;
+  }
   let tgt = this.home, dist = null;
   if (this.cine) {
     this.cine.t += dt;
     tgt = this.cine.a.root.position.clone().setY(this.cine.a.root.position.y + 1.1); dist = 11;
-    if (this.cine.t > this.cine.dur) { this.cine = null; if (!this.deathQueue.length && this.preCam) this.restoreT = 2.5; }
-  } else if (this.restoreT > 0 && this.preCam && !this.podiumIds.length) {
+    if (this.cine.t > this.cine.dur) this.cine = null;
+  } else if (this.preCam && !this.deathQueue.length && !this.podiumIds.length && this.cineGap <= 0.6) {
+    // semua animasi kematian selesai → zoom out kembali ke posisi semula
+    if (!(this.restoreT > 0)) this.restoreT = 2.5;
     // zoom out kembali ke posisi kamera semula
     this.restoreT -= dt;
     const k = Math.min(1, dt * 2.2);
