@@ -151,7 +151,8 @@ export class FirebaseTransport extends Emitter {
     const g = this.game; if (!g || this.role !== 'host') return;
     const sm = g.summary();
     const humans = [...g.players.values()].filter((p) => !p.isBot && p.id !== g.modId).length;
-    const item = { name: sm.name, hostName: this.hostName, players: sm.players, humans, phase: sm.phase, phaseName: sm.phaseName, day: sm.day || 0, hasMod: sm.hasMod, pub: !!sm.isPublic };
+    // jumlah di daftar room = semua orang di room, termasuk host yang jadi Moderator
+    const item = { name: sm.name, hostName: this.hostName, players: g.players.size, humans, phase: sm.phase, phaseName: sm.phaseName, day: sm.day || 0, hasMod: sm.hasMod, pub: !!sm.isPublic };
     const key = JSON.stringify(item);
     if (!force && key === this.lastListing) return;
     this.lastListing = key;
@@ -298,7 +299,8 @@ export function watchRooms(cb) {
           if (!m || now - last > STALE_MS) remove(ref(database(), `ww/rooms/${code}`)).catch(() => {});
           return;
         }
-        if (m.pub === false || m.players === 0) return;
+        // room tetap tampil walau 0 pemain: host yang jadi Moderator memang tidak dihitung sebagai pemain
+        if (m.pub === false) return;
         rooms.push({ code, name: m.name || 'Desa ' + code, host: m.hostName, players: m.players ?? '?', humans: m.humans, phase: m.phase || 'lobby', phaseName: m.phaseName || 'Lobby', day: m.day || 0, hasMod: !!m.hasMod, t: last });
       });
       const rank = (p) => (p === 'lobby' ? 0 : p === 'end' ? 1 : 2);

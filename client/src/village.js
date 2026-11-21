@@ -475,7 +475,7 @@ export class Village {
       if (deco.ring) a.ring.material.color.set(deco.ring); else if (this.hoverId === id) a.ring.material.color.set(0xffffff);
       a.ring.scale.setScalar(1 + (deco.ring ? Math.sin(t * 4) * 0.06 : 0));
       // label DOM
-      v.copy(a.root.position); const lh = a.rig.kind === 'real' ? 2.45 : 2.6; v.y += (p.alive || a.onPodium || a.pending) ? (a.wolf ? 3.3 : lh) : a.death ? lh : 1.2; v.project(this.camera);
+      v.copy(a.root.position); const lh = a.rig.kind === 'real' ? (a.rig.height || 1.8) + 0.62 : 2.6; v.y += (p.alive || a.onPodium || a.pending) ? (a.wolf ? 3.3 : lh) : a.death ? lh : 1.2; v.project(this.camera);
       const off = v.z > 1 || !a.root.visible;
       a.label.style.display = off ? 'none' : '';
       if (!off) {

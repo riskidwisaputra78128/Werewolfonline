@@ -6,31 +6,45 @@ import { sway } from './heroes.js';
 // ---------------------------------------------------------------- daftar 16 tipe
 // armor: warna zirah (pria) · outfit/accent/skin: pewarnaan ulang tekstur (wanita)
 export const VARIANTS = [
-  { id: 'knight', name: 'Ksatria', body: 'male', armor: 0xb8c0cc, head: 'plume', plume: 0xc0392b, cape: 0x8a1c1c, weapon: 'sword', h: 1.03 },
-  { id: 'witch', name: 'Penyihir', body: 'female', outfit: '#5b2a86', accent: '#c084fc', skin: 0, head: 'witchhat', hat: 0x24123a, weapon: 'staff', orb: 0xa855f7 },
-  { id: 'ranger', name: 'Penjaga Hutan', body: 'man', armor: 0x4a5a32, head: 'hood', hood: 0x2f3a22, cape: 0x3a4a2a, weapon: 'bow', back: 'quiver', h: 1.0 },
-  { id: 'priestess', name: 'Pendeta', body: 'female', outfit: '#f2efe6', accent: '#e8c46a', skin: 1, head: 'halo', weapon: 'staff', orb: 0xffe2a0, cape: 0xf2efe6 },
-  { id: 'warlock', name: 'Warlock', body: 'man', armor: 0x2a2233, head: 'horns', horn: 0x1a1414, cape: 0x3a0f2a, weapon: 'staff', orb: 0xff3b30, h: 1.04 },
-  { id: 'huntress', name: 'Pemburu', body: 'female', outfit: '#2f5d3a', accent: '#d8b06a', skin: 2, head: 'hood', hood: 0x24402a, weapon: 'bow', back: 'quiver' },
-  { id: 'paladin', name: 'Paladin', body: 'male', armor: 0xd8b06a, head: 'crown', cape: 0xf2efe6, weapon: 'sword', back: 'shield', h: 1.05, w: 1.06 },
-  { id: 'bard', name: 'Penyair', body: 'female', outfit: '#d4602a', accent: '#ffd98a', skin: 3, head: 'feathercap', hat: 0x6a2a14, weapon: 'lute' },
-  { id: 'viking', name: 'Viking', body: 'man', armor: 0x7a5a3a, head: 'horned', horn: 0xeee6d2, cape: 0x5a3a22, weapon: 'axe', back: 'shield', h: 0.98, w: 1.12 },
-  { id: 'elf', name: 'Penyihir Elf', body: 'female', outfit: '#2a5aa8', accent: '#7dd3fc', skin: 1, head: 'circlet', ears: true, weapon: 'orb', orb: 0x38bdf8, cape: 0x1e3a6a },
-  { id: 'assassin', name: 'Pembunuh Bayaran', body: 'man', armor: 0x1a1a1f, head: 'hood', hood: 0x111114, cape: 0x111114, weapon: 'daggers', h: 0.97, w: 0.94 },
-  { id: 'healer', name: 'Tabib', body: 'female', outfit: '#e8f0e4', accent: '#4ade80', skin: 2, head: 'flowers', weapon: 'orb', orb: 0x4ade80 },
-  { id: 'samurai', name: 'Samurai', body: 'male', armor: 0x9a1c1c, head: 'crescent', weapon: 'katana', cape: 0x1a1a1a, h: 1.0 },
-  { id: 'necro', name: 'Ahli Nujum', body: 'female', outfit: '#1a1018', accent: '#ff3b30', skin: 0, head: 'skullcrown', weapon: 'staff', orb: 0x7cff4a, cape: 0x2a0a0a },
-  { id: 'gladiator', name: 'Gladiator', body: 'male', armor: 0x9a6a3a, head: 'crest', plume: 0xd8b06a, weapon: 'sword', back: 'shield', h: 1.02, w: 1.1 },
-  { id: 'noble', name: 'Bangsawan', body: 'female', outfit: '#7a1f4a', accent: '#ffd98a', skin: 3, head: 'crown', cape: 0x4a0f2a, weapon: 'fan' },
+  // ---- Orang Tua (pria) ----
+  { id: 'kakek', name: 'Kakek', body: 'oldman', armor: 0x6a5a48, head: null, weapon: 'cane' },
+  { id: 'kakek-topi', name: 'Kakek Bertopi', body: 'oldman', armor: 0x3a4a5a, head: 'feathercap', hat: 0x3a2a1a, weapon: 'cane' },
+  { id: 'tetua', name: 'Tetua Desa', body: 'oldman', armor: 0x4a2a3a, head: 'hood', hood: 0x2a1a24, weapon: 'staff', orb: 0xffe2a0 },
+  // ---- Nenek ----
+  { id: 'nenek', name: 'Nenek', body: 'oldwoman', outfit: '#6a4a6a', accent: '#d8b06a', skin: 1, head: null, weapon: 'cane', skirt: 0x4a3046 },
+  { id: 'nenek-kerudung', name: 'Nenek Berkerudung', body: 'oldwoman', outfit: '#3a5a4a', accent: '#e8c46a', skin: 2, head: 'hood', hood: 0x5a3a2a, weapon: 'cane', skirt: 0x2f4a3a },
+  { id: 'nenek-bunga', name: 'Nenek Bunga', body: 'oldwoman', outfit: '#8a5a3a', accent: '#ff7aa8', skin: 0, head: 'flowers', weapon: 'lantern', skirt: 0x6a3a2a },
+  // ---- Laki-laki Muda ----
+  { id: 'pemuda', name: 'Pemuda', body: 'man', armor: 0x2a5aa8, head: null, weapon: 'lantern' },
+  { id: 'penebang', name: 'Penebang Kayu', body: 'man', armor: 0x8a2a1a, head: null, weapon: 'axe' },
+  { id: 'pemburu', name: 'Pemburu Muda', body: 'man', armor: 0x3a4a2a, head: 'hood', hood: 0x2f3a22, weapon: 'bow', back: 'quiver' },
+  // ---- Cewek Muda Stylish ----
+  { id: 'stylish', name: 'Gadis Stylish', body: 'female', outfit: '#e84393', accent: '#ffd98a', skin: 1, head: 'circlet', weapon: 'fan', orb: 0xff7aa8 },
+  { id: 'penyihir', name: 'Penyihir Muda', body: 'female', outfit: '#5b2a86', accent: '#c084fc', skin: 0, head: 'witchhat', hat: 0x24123a, weapon: 'staff', orb: 0xa855f7, cape: 0x3a1a5a },
+  { id: 'putri', name: 'Putri Desa', body: 'female', outfit: '#f2efe6', accent: '#e8c46a', skin: 3, head: 'crown', weapon: 'orb', orb: 0xffe2a0, cape: 0x8a1c4a },
+  { id: 'penari', name: 'Penari', body: 'female', outfit: '#00a8a8', accent: '#ffd166', skin: 2, head: 'flowers', weapon: null },
+  // ---- Anak-anak ----
+  { id: 'bocah', name: 'Bocah Laki-laki', body: 'boy', armor: 0xd35400, head: null, weapon: 'lantern' },
+  { id: 'bocah-topi', name: 'Bocah Bertopi', body: 'boy', armor: 0x27ae60, head: 'feathercap', hat: 0x1e5a8a, weapon: null },
+  { id: 'gadis-kecil', name: 'Gadis Kecil', body: 'girl', outfit: '#ff7aa8', accent: '#ffffff', skin: 1, head: 'flowers', weapon: null },
 ];
+// sifat tiap golongan usia
+export const AGE = {
+  oldman: { base: 'man', h: 1.7, head: 1.0, hunch: 0.28, breath: 1.0, depth: 1.3, gray: true },
+  oldwoman: { base: 'female', h: 1.57, head: 1.0, hunch: 0.3, breath: 1.0, depth: 1.3, gray: true },
+  man: { base: 'man', h: 1.8, head: 1.0, hunch: 0, breath: 1.45, depth: 1.0 },
+  female: { base: 'female', h: 1.69, head: 1.0, hunch: 0, breath: 1.5, depth: 1.0 },
+  boy: { base: 'man', h: 1.2, head: 1.32, hunch: 0, breath: 2.0, depth: 0.8, child: true },
+  girl: { base: 'female', h: 1.14, head: 1.32, hunch: 0, breath: 2.1, depth: 0.8, child: true },
+};
 
 // ---------------------------------------------------------------- ganti warna tekstur (wanita)
 const SKIN_TONES = [[0.62, 0.43, 0.31], [0.93, 0.77, 0.65], [0.78, 0.56, 0.42], [0.45, 0.29, 0.2]]; // r,g,b 0..1
 const texCache = new Map();
 function rgb2hsv(r, g, b) { const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn; let h = 0; if (d) { h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; h *= 60; if (h < 0) h += 360; } return [h, mx ? d / mx : 0, mx]; }
 /** Kembalikan tekstur baru: celana kuning → warna baju, aksen merah → warna aksen, kulit → warna kulit */
-export function recolorTexture(srcTex, v) {
-  const key = v.id; if (texCache.has(key)) return texCache.get(key);
+export function recolorTexture(srcTex, v, gray = false) {
+  const key = v.id + (gray ? '-gray' : ''); if (texCache.has(key)) return texCache.get(key);
   const img = srcTex.image; if (!img) return srcTex;
   const W = 512, c = document.createElement('canvas'); c.width = c.height = W; const x = c.getContext('2d', { willReadFrequently: true });
   x.drawImage(img, 0, 0, W, W);
@@ -46,6 +60,7 @@ export function recolorTexture(srcTex, v) {
     else if (h >= 12 && h <= 38 && s > 0.25 && s < 0.8 && val > 0.18 && val < 0.8) {      // kulit
       const f = val / 0.55; d[i] = Math.min(255, S[0] * f * 255); d[i + 1] = Math.min(255, S[1] * f * 255); d[i + 2] = Math.min(255, S[2] * f * 255); continue;
     }
+    else if (gray && val < 0.32 && s < 0.4) { const gv = Math.min(255, (0.62 + val) * 255); d[i] = gv; d[i + 1] = gv; d[i + 2] = gv * 1.02; continue; } // rambut & kain gelap → uban
     if (k) { const [C, f] = k; d[i] = Math.min(255, C[0] * f * 255); d[i + 1] = Math.min(255, C[1] * f * 255); d[i + 2] = Math.min(255, C[2] * f * 255); }
   }
   x.putImageData(data, 0, 0);
@@ -63,7 +78,7 @@ const glowM = (c) => new THREE.MeshStandardMaterial({ color: 0xffffff, emissive:
 const shadowed = (g) => { g.traverse((m) => { if (m.isMesh) m.castShadow = true; }); return g; };
 
 /** topi/helm/mahkota; top = tinggi puncak kepala dari tulang Head; male = kepala berhelm (lebih besar) */
-export function headPiece(v, top, male) {
+export function headPiece(v, top, male, scale = 1) {
   const g = new THREE.Group(), R = male ? 0.15 : 0.12, y = top;
   switch (v.head) {
     case 'witchhat': {
@@ -145,6 +160,7 @@ export function headPiece(v, top, male) {
       break;
     }
   }
+  if (scale !== 1) { g.scale.setScalar(scale); g.position.y = top * (1 - scale); }
   if (v.ears) for (const sx of [-1, 1]) { const ear = new THREE.Mesh(new THREE.ConeGeometry(0.02, 0.11, 4), M(0xc89a7a)); ear.position.set(sx * 0.085, y - 0.12, -0.01); ear.rotation.set(-0.5, 0, -sx * 1.15); g.add(ear); }
   return shadowed(g);
 }
@@ -189,11 +205,33 @@ export function weaponPiece(v) {
       const o = new THREE.Mesh(new THREE.IcosahedronGeometry(0.06, 2), glowM(v.orb)); o.position.set(0, -0.1, 0.08); o.userData.spin = true; g.add(o);
       g.userData.glow = { y: -0.1, z: 0.08, color: v.orb }; break;
     }
+    case 'cane': {
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.018, 0.92, 8), wood()); pole.position.y = -0.42;
+      const crook = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.014, 6, 14, Math.PI), wood()); crook.position.set(0, 0.04, 0.05); crook.rotation.y = Math.PI / 2;
+      g.add(pole, crook); g.userData.cane = true; break;
+    }
+    case 'lantern': {
+      const handle = new THREE.Mesh(new THREE.TorusGeometry(0.04, 0.006, 4, 12, Math.PI), M(0x2a2a2a, { metalness: 0.8 })); handle.position.y = -0.04;
+      const frame = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.14, 6, 1, true), M(0x3a3a3a, { metalness: 0.8, roughness: 0.4, side: THREE.DoubleSide })); frame.position.y = -0.15;
+      const flame = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 6), glowM(0xffa040)); flame.position.y = -0.15;
+      g.add(handle, frame, flame); g.userData.glow = { y: -0.15, color: 0xffa040 }; break;
+    }
     case 'fan': {
       const f = new THREE.Mesh(new THREE.CircleGeometry(0.2, 16, 0, Math.PI * 0.75), M(0xffd98a, { side: THREE.DoubleSide, metalness: 0.3 })); f.position.set(0, -0.08, 0.05); f.rotation.set(0, 0, -Math.PI * 0.6); g.add(f); break;
     }
   }
   return shadowed(g);
+}
+
+/** rok panjang (nenek), dipasang di pinggul; len = jarak pinggul ke lantai */
+export function skirtPiece(v, uTime, phase, len) {
+  const prof = []; for (let i = 0; i <= 10; i++) { const t = i / 10; prof.push(new THREE.Vector2(0.16 + Math.pow(1 - t, 1.4) * 0.2, -len + t * (len + 0.06))); }
+  const geo = new THREE.LatheGeometry(prof, 32);
+  const p = geo.attributes.position; for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i), z = p.getZ(i), a = Math.atan2(x, z), k = Math.max(0, -y / len), f = 1 + Math.sin(a * 10) * 0.05 * k; p.setXYZ(i, x * f, y, z * f); } geo.computeVertexNormals();
+  const mat = sway(new THREE.MeshStandardMaterial({ color: v.skirt, roughness: 0.85, side: THREE.DoubleSide }), uTime, { top: 0.06, bottom: -len, amp: 0.04, phase });
+  const m = new THREE.Mesh(geo, mat); m.castShadow = true;
+  const band = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.012, 6, 24), M(0xd8b06a, { metalness: 0.6 })); band.rotation.x = Math.PI / 2; band.position.y = 0.05;
+  const g = new THREE.Group(); g.add(m, band); return g;
 }
 
 /** jubah punggung + barang di punggung (busur/tabung panah/perisai) */
