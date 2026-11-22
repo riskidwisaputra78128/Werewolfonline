@@ -54,6 +54,8 @@ Daftar room dibaca dari `meta` tiap room di `ww/rooms`, jadi cukup rules yang me
 - Chat umum, chat rahasia serigala, chat arwah, plus gelembung chat di atas avatar.
 - Desa 3D: siang/malam mengikuti fase, klik avatar untuk memilih target, nisan untuk pemain mati, werewolf berubah wujud di akhir.
 - Bot pengisi dan latihan offline vs 7 bot.
+- **Bot Ngobrol** (bisa dimatikan di pengaturan host): bot berdiskusi seperti warga — kaget saat ada korban, menuduh, membela diri, ikut-ikutan curiga, Seer membongkar hasil terawangan, serigala berunding di chat rahasia & bisa mengaku Seer palsu, membalas chat pemain manusia, mengumumkan pilihan voting. Tiap bot punya sifat (santai, curigaan, heboh, pendiam, bijak).
+- **Level bot: Easy / Normal / Hard** — memengaruhi kecerdasan diskusi, voting, dan aksi malam (Hard: Seer menerawang tersangka utama, Doctor/Guardian melindungi Seer yang mengaku, Hunter hanya menembak bila yakin, serigala memburu Seer).
 - **4 tema** (dipilih host saat membuat room / di panel pengaturan lobby, sama untuk semua pemain):
   - 🌾 **Kampung** — rumah panggung beratap jerami, sawah padi bergoyang, ayam berkeliaran & mematuk, jemuran berkibar, sumur dengan engkol, kincir air, asap dapur, obor.
   - 🏮 **Pasar Desa** — alun-alun berbatu, lapak beratap kain belang (buah, sayur, ikan, kain, gerabah, roti, sate), untaian bendera & lampion, gerobak, tong, merpati, asap panggangan.

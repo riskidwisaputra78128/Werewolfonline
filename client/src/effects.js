@@ -269,10 +269,11 @@ export class FX {
     add(new THREE.Mesh(new THREE.TetrahedronGeometry(0.1), new THREE.MeshStandardMaterial({ color: 0xffe2a0, emissive: 0xffb340, transparent: true })));
     add(new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.2, 6), new THREE.MeshStandardMaterial({ color: 0xddddee, metalness: 0.9, roughness: 0.2, emissive: 0xffcc66 })));
     add(new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1, 5), new THREE.MeshBasicMaterial({ color: 0xff1a1a, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })));
-    this.scene.add(tmp);
-    try { this.v.renderer.compile(this.scene, this.v.camera); } catch { /* */ }
-    // render satu frame agar tekstur ikut terunggah ke GPU, lalu buang
-    requestAnimationFrame(() => requestAnimationFrame(() => this.scene.remove(tmp)));
+    // kompilasi di latar (compileAsync) — objek disimpan agar shader-nya tetap di cache
+    this._warm = tmp;
+    const r = this.v.renderer;
+    if (r.compileAsync) r.compileAsync(tmp, this.v.camera, this.scene).catch(() => {});
+    else { this.scene.add(tmp); try { r.compile(this.scene, this.v.camera); } catch { /* */ } requestAnimationFrame(() => requestAnimationFrame(() => this.scene.remove(tmp))); }
   }
 
   // ------------------------------------------------------------ animasi kematian

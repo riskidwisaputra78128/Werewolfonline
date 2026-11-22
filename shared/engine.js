@@ -24,6 +24,7 @@ export const PHASES = {
 const BOT_NAMES = ['Bima', 'Sari', 'Dewi', 'Agus', 'Rina', 'Joko', 'Putri', 'Bayu', 'Lestari', 'Andi', 'Wulan', 'Eko', 'Fitri', 'Gilang', 'Hana', 'Indra'];
 export const COLORS = ['#c0392b', '#2980b9', '#27ae60', '#8e44ad', '#d35400', '#16a085', '#f1c40f', '#7f8c8d', '#e84393', '#00cec9', '#6c5ce7', '#fd9644', '#a3cb38', '#b53471', '#1289a7', '#c4e538'];
 
+import { BotChat } from './botchat.js';
 const MAX_PLAYERS = 16, MIN_PLAYERS = 4;
 // kode penyebab kematian → dipakai klien untuk memilih animasi
 const CAUSE_CODE = { 'dimangsa serigala': 'wolf', 'mengorbankan diri melindungi warga': 'guard', diracun: 'poison', 'terkena panah Hunter': 'hunter', 'ditembak sniper': 'sniper', 'dieksekusi warga': 'vote' };
@@ -51,7 +52,10 @@ export class Game {
       timers: { night: 45, day: 90, vote: 40 },
       revealRoles: true,
       theme: 'kampung', // tema desa: kampung | pasar | modern | kantor
+      botChat: true, // bot ikut berdiskusi di chat
+      botLevel: 'normal', // easy | normal | hard
     };
+    this.botChat = new BotChat(this);
     this.phase = 'lobby';
     this.day = 0;
     this.deadline = 0;
@@ -150,6 +154,8 @@ export class Game {
     if ('revealRoles' in s) this.settings.revealRoles = !!s.revealRoles;
     if ('isPublic' in s) this.isPublic = !!s.isPublic;
     if (['kampung', 'pasar', 'modern', 'kantor'].includes(s.theme)) this.settings.theme = s.theme;
+    if ('botChat' in s) this.settings.botChat = !!s.botChat;
+    if (['easy', 'normal', 'hard'].includes(s.botLevel)) this.settings.botLevel = s.botLevel;
     this.emit();
   }
   setModerator(by, on) {
@@ -200,6 +206,8 @@ export class Game {
     if (phase === 'night') this.beginNight();
     if (phase === 'vote') { this.votes = {}; this.scheduleBots('vote'); }
     if (phase === 'hunter') this.scheduleBots('hunter');
+    if (phase === 'reveal') this.botChat.init();
+    this.botChat.onPhase(phase);
     this.emit();
   }
   onTimeout() {
@@ -421,7 +429,7 @@ export class Game {
     return t;
   }
   resolveVote() {
-    this.pendingDeaths = []; this.hunterQueue = [];
+    this.pendingDeaths = []; this.hunterQueue = []; this.lastExecuted = null;
     for (const [voter, target] of Object.entries(this.votes || {})) {
       const vp = this.players.get(voter), tp = this.players.get(target);
       if (!vp?.stats || !vp.alive) continue;
@@ -436,6 +444,7 @@ export class Game {
     else if (entries[0][0] === 'skip') msg = 'Mayoritas memilih abstain. Tidak ada eksekusi.';
     else {
       const d = this.players.get(entries[0][0]);
+      this.lastExecuted = d.id;
       this.kill(d, 'dieksekusi warga');
       for (const [voter, target] of Object.entries(this.votes || {})) {
         const vp = this.players.get(voter); if (!vp?.stats || target !== d.id) continue;
@@ -486,6 +495,7 @@ export class Game {
     if (!channel) return { ok: false, error: 'Kamu sedang tidur. Tidak bisa bicara di malam hari.' };
     this.pushChat({ id, name: p.name, color: p.color, text: msg, channel, mod: id === this.modId });
     if (p.stats && this.phase !== 'lobby' && this.phase !== 'end') p.stats.chats++;
+    try { this.botChat.onChat(this.chat[this.chat.length - 1]); } catch (e) { console.warn('[botchat]', e); }
     this.emit();
     return { ok: true };
   }
@@ -503,6 +513,9 @@ export class Game {
     const others = this.alive.filter((p) => p.id !== b.id);
     if (!others.length) return;
     if (kind === 'night' && this.phase === 'night') {
+      // level normal/hard: keputusan dari "otak" bot; easy: perilaku acak bawaan
+      const smart = this.botChat.nightAction(b);
+      if (smart) { this.act(b.id, smart); return; }
       if (b.role === 'werewolf') {
         // ikuti pilihan serigala lain bila ada
         const mate = Object.values(this.night.wolfVotes)[0];
@@ -518,6 +531,8 @@ export class Game {
         if (b.potions.heal && this.wolfTarget() && Math.random() < 0.4) this.act(b.id, { type: 'heal' });
         this.act(b.id, { type: 'done' });
       }
+    } else if (kind === 'vote' && this.phase === 'vote' && b.brain && this.botChat.level !== 'easy') {
+      this.vote(b.id, this.botChat.voteTarget(b));
     } else if (kind === 'vote' && this.phase === 'vote') {
       // condong ikut suara terbanyak, kadang abstain
       const t = this.tally(); const lead = Object.keys(t).sort((x, y) => t[y] - t[x])[0];

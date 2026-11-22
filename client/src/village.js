@@ -65,7 +65,14 @@ export class Village {
     this.setTheme('kampung');
     this.fx.warmup();
     // model manusia realistis (GLB) dimuat di latar; begitu siap, avatar diganti
-    loadHumans().then((lib) => { if (lib) this.swapRigs(); });
+    loadHumans().then((lib) => { if (lib) { this.swapRigs(); this.precompile(); } });
+    // siapkan shader werewolf (muncul saat akhir game) & efek di latar, objeknya disimpan supaya shader tidak dibuang
+    setTimeout(() => {
+      this._booted = true;
+      const keep = new THREE.Group(); const w = upgradeWolf(makePlayerWerewolf(), this.uTime); keep.add(w.root);
+      this._warmKeep = keep; this.precompile(keep);
+      this.precompile();
+    }, 1500);
     this.podiumIds = [];
     this.modRig = createHero({ color: '#ffe2a0', seed: 'moderator', style: 'angel', uTime: this.uTime }); this.modRig.root.visible = false; this.scene.add(this.modRig.root);
 
@@ -197,8 +204,20 @@ export class Village {
     if (this.themeName === name) return;
     this.themeName = name;
     this.themes = this.themes || {};
-    if (!this.themes[name]) this.themes[name] = buildTheme(name, { scene: this.scene, heightAt, uTime: this.uTime, stoneMat: this.stoneMat, village: this });
-    for (const [k, t] of Object.entries(this.themes)) t.group.visible = k === name;
+    const fresh = !this.themes[name];
+    if (fresh) this.themes[name] = buildTheme(name, { scene: this.scene, heightAt, uTime: this.uTime, stoneMat: this.stoneMat, village: this });
+    const t = this.themes[name];
+    if (fresh && this.renderer.compileAsync && this._booted) {
+      // tema baru: kompilasi shader di latar dulu, baru ditampilkan (hindari layar membeku)
+      t.group.visible = true; this.scene.remove(t.group);
+      const g = t.group;
+      this.precompile(g).then(() => { this.scene.add(g); if (this.themeName === name) this.applyTheme(name); else g.visible = false; });
+      return;
+    }
+    this.applyTheme(name);
+  }
+  applyTheme(name) {
+    for (const [k, th] of Object.entries(this.themes)) th.group.visible = k === name;
     const t = this.themes[name];
     this.cabins.visible = !!t.cabins;
     // tema dalam ruangan: sembunyikan langit, hutan, tanah, api unggun, kunang-kunang, kabut tanah
@@ -464,19 +483,38 @@ export class Village {
 
   /** Turunkan/naikkan kualitas grafis otomatis berdasarkan FPS rata-rata */
   autoQuality(rawDt) {
-    const w = this.qWin; w.sum += rawDt; w.n++; w.t += rawDt;
+    if (document.hidden) return; // tab di latar: browser sengaja memperlambat → jangan dinilai
+    const w = this.qWin; w.t += rawDt;
+    // frame macet sesaat (kompilasi shader, GC) tidak ikut dihitung agar kualitas tidak turun karena satu hentakan
+    if (rawDt < 0.25) { w.sum += rawDt; w.n++; } else w.hitch = (w.hitch || 0) + 1;
     if (w.t < 3) return;
-    const fps = w.n / w.sum; w.sum = 0; w.n = 0; w.t = 0; this.qUpT += 3;
-    if (this.fpsEl) this.fpsEl.textContent = `${fps.toFixed(0)} FPS · kualitas ${['tinggi', 'sedang', 'rendah', 'hemat'][this.quality]} · ${this.renderer.info.render.calls} draw`;
-    if (fps < 40 && this.quality < 3) { this.setQuality(this.quality + 1); this.qUpT = 0; }
-    else if (fps > 57 && this.quality > 0 && this.qUpT >= 30) { this.setQuality(this.quality - 1); this.qUpT = 0; }
+    const fps = w.n / Math.max(1e-3, w.sum), hitch = w.hitch || 0; w.sum = 0; w.n = 0; w.t = 0; w.hitch = 0;
+    this.qUpT += 3; this.qSince = (this.qSince || 0) + 3;
+    this.hitches = (this.hitches || 0) + hitch;
+    if (this.fpsEl) this.fpsEl.textContent = `${fps.toFixed(0)} FPS · kualitas ${['tinggi', 'sedang', 'rendah', 'hemat'][this.quality]} · ${this.renderer.info.render.calls} draw · ${this.renderer.info.programs.length} shader · macet ${this.hitches}×`;
+    this.qFail = this.qFail || {};
+    const now = performance.now();
+    if (fps < 40 && this.quality < 3 && this.qSince >= 6) {
+      this.qFail[this.quality] = now; // level ini terbukti berat → diingat
+      this.setQuality(this.quality + 1); this.qUpT = 0; this.qSince = 0;
+    } else if (fps > 58 && this.quality > 0 && this.qUpT >= 30 && this.qSince >= 20) {
+      const failedAt = this.qFail[this.quality - 1] || 0;
+      if (now - failedAt > 180000) { this.setQuality(this.quality - 1); this.qUpT = 0; this.qSince = 0; } // jangan bolak-balik ke level yang baru saja gagal
+    }
+  }
+  /** kompilasi shader di latar (tidak membekukan layar); obj bisa berupa objek di luar scene */
+  precompile(obj) {
+    const r = this.renderer;
+    if (!r.compileAsync) return Promise.resolve();
+    return r.compileAsync(obj || this.scene, this.camera, obj ? this.scene : null).catch(() => {});
   }
   setQuality(q) {
     this.quality = q; const r = this.renderer;
     r.setPixelRatio(Math.max(0.75, Math.min(this.baseDpr, [this.baseDpr, 1.25, 1, 0.85][q])));
     r.setSize(innerWidth, innerHeight, false); this.composer?.setSize(innerWidth, innerHeight);
     this.bloom.enabled = q < 2 && !this.low;
-    this.sun.shadow.mapSize.set(q >= 2 ? 1024 : 2048, q >= 2 ? 1024 : 2048); this.sun.shadow.map?.dispose(); this.sun.shadow.map = null;
+    const ms = q >= 2 ? 1024 : 2048;
+    if (this.sun.shadow.mapSize.x !== ms) { this.sun.shadow.mapSize.set(ms, ms); this.sun.shadow.map?.dispose(); this.sun.shadow.map = null; }
     if (this.grass) this.grass.visible = q < 3;
     if (this.fx.motes) this.fx.motes.visible = q < 3;
     this.fx.fog?.forEach((f) => (f.visible = q < 3 && !this.indoor));
