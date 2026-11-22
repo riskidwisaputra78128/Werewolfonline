@@ -1,4 +1,6 @@
-import { Village } from './village.js';
+import { Village, EMO_ICON, EMO_LABEL } from './village.js';
+import { auth } from './auth.js';
+import { VARIANTS } from './outfits.js';
 import { OnlineTransport, OfflineTransport, P2PTransport } from './transport.js';
 import { FirebaseTransport, hasFirebase, watchRooms } from './fbtransport.js';
 import { ROLES, SPECIALS } from '../../shared/engine.js';
@@ -22,9 +24,11 @@ const THEME_NAME = { kampung: '🌾 Kampung', pasar: '🏮 Pasar Desa', modern: 
 const audio = new Audio();
 addEventListener('pointerdown', () => audio.init(), { once: true });
 
+auth.load();
 const village = new Village($('scene'), { onPick: (id) => pickHandler?.(id), low: matchMedia('(max-width:700px)').matches || location.search.includes('low') });
 village.controls.autoRotate = true;
-window.__ww = { village }; // untuk debug di konsol
+window.__ww = { village, get game() { return T?.game; } };
+village.weather.onThunder = (d) => audio.thunder(d); // untuk debug di konsol
 
 let net = null, offline = new OfflineTransport(), T = null, stopRoomWatch = null;
 let V = null, offset = 0, pickHandler = null, lastLogT = 0, lastChatN = 0, unread = 0, lastPhase = '', revealShown = '', endShown = false;
@@ -90,6 +94,7 @@ function renderRooms(rooms) {
     : '<div class="empty">Belum ada room aktif. Buat room baru — room-mu akan langsung muncul di sini untuk semua pemain.</div>';
   el.querySelectorAll('[data-join]').forEach((b) => (b.onclick = () => join(b.dataset.join)));
 }
+const sendProfile = () => T?.call('profile', auth.profile());
 const myName = () => { const n = $('inName').value.trim(); if (n) LS.set('ww_name', n); return n; };
 let busy = false;
 async function join(code) {
@@ -99,7 +104,7 @@ async function join(code) {
   const r = MODE === 'static' ? await net.joinRoom(code.toUpperCase(), name) : await net.call('join', { code: code.toUpperCase(), name });
   busy = false;
   if (!r.ok) { T = null; return lobbyMsg(r.error); }
-  lobbyMsg('');
+  lobbyMsg(''); sendProfile();
 }
 $('btnCreate').onclick = async () => {
   const name = myName(); if (!name) return lobbyMsg('Isi nama dulu.');
@@ -108,14 +113,14 @@ $('btnCreate').onclick = async () => {
   const opts = { name, roomName: $('inRoomName').value, hostIsMod: $('ckMod').checked, isPublic: $('ckPublic').checked };
   const r = MODE === 'static' ? await net.createRoom(name, opts) : await net.call('create', opts);
   busy = false;
-  if (!r.ok) { T = null; lobbyMsg(r.error); } else { lobbyMsg(''); send('settings', { theme: $('inTheme').value }); }
+  if (!r.ok) { T = null; lobbyMsg(r.error); } else { lobbyMsg(''); send('settings', { theme: $('inTheme').value }); sendProfile(); }
 };
 $('btnRefresh').onclick = refreshRooms;
 $('btnJoinCode').onclick = () => { const c = $('inCode').value.trim(); if (c.length < 6) return lobbyMsg('Masukkan kode room 6 huruf.'); join(c); };
 $('inCode').onkeydown = (e) => { if (e.key === 'Enter') $('btnJoinCode').click(); };
 $('btnOffline').onclick = () => {
   const name = myName() || 'Kamu';
-  T = offline; offline.call('create', { name, bots: 7 });
+  T = offline; offline.call('create', { name, bots: 7 }); offline.call('profile', { look: auth.look() ?? -1 });
   setTimeout(() => offline.call('settings', { theme: $('inTheme').value, botLevel: $('inBotLevel').value, botChat: true }), 50);
 };
 // pratinjau tema di latar lobby
@@ -141,13 +146,14 @@ function backToLobby(msg) {
   lobbyMsg(msg || '');
   if (!GAS) { try { history.replaceState(null, '', location.pathname + location.search.replace(/[?&]room=[A-Z0-9]+/i, '')); } catch { /* */ } }
   if (MODE === 'static') setStatus('online');
-  refreshRooms();
+  refreshRooms(); $('emobar').classList.add('hidden'); audio.setWeather('cerah'); village.weather.set('cerah'); renderAcct(); loadLb();
 }
 // peringatan untuk host P2P saat menutup tab
 addEventListener('beforeunload', (e) => { if (MODE === 'static' && net?.role === 'host' && V && V.players.some((p) => !p.isBot && p.id !== V.you)) { e.preventDefault(); e.returnValue = ''; } });
 
 // ================= STATE =================
 const TIME = { lobby: 0.72, reveal: 0.8, night: 0.97, dawn: 0.27, day: 0.42, vote: 0.6, verdict: 0.68, end: 0.74 };
+const WEATHER_ICON = { kabut: '🌫', hujan: '🌧', badai: '⛈' };
 const PHASE_ICON = { lobby: '🌲', reveal: '🃏', night: '🌙', dawn: '🌅', day: '☀️', vote: '🗳️', verdict: '⚖️', hunter: '🏹', end: '🏁' };
 
 function onState(v) {
@@ -165,6 +171,8 @@ function onState(v) {
   if (v.phase !== lastPhase) onPhaseChange(v, lastPhase);
   lastPhase = v.phase;
   village.setTheme(v.settings?.theme || 'kampung');
+  village.weather.set(v.weather); audio.setTheme(v.settings?.theme || 'kampung'); audio.setWeather(village.indoor ? 'cerah' : v.weather); audio.setNight(v.phase === 'night' || (v.phase === 'end' && v.winner === 'wolf') ? 1 : 0);
+  if (v.phase === 'end') reportResult();
   village.setPodium(v.phase === 'end' && v.podium ? v.podium.filter((r) => r.winner).slice(0, 3).map((r) => r.id) : []);
   village.sync(v.players, { reveal: v.phase === 'end' });
   if (TIME[v.phase] != null) village.setTimeOfDay(v.phase === 'end' && v.winner === 'wolf' ? 0.95 : TIME[v.phase]);
@@ -240,7 +248,7 @@ function render() {
   if (!V) return;
   const v = V, mine = v.me;
   // chip
-  $('chipPhase').textContent = `${PHASE_ICON[v.phase] || '•'} ${v.name} · ${v.phaseName}${v.day && v.phase !== 'lobby' ? ' H-' + v.day : ''}`;
+  $('chipPhase').textContent = `${PHASE_ICON[v.phase] || '•'} ${v.name} · ${v.phaseName}${v.day && v.phase !== 'lobby' ? ' H-' + v.day : ''}${WEATHER_ICON[v.weather] ? ' ' + WEATHER_ICON[v.weather] : ''}`;
   const myRole = v.isMod ? 'moderator' : mine?.role;
   $('chipRole').textContent = myRole ? `${roleOf(myRole).icon} ${roleOf(myRole).name}${mine && !mine.alive && !v.isMod ? ' (mati)' : ''}` : '🎭 Belum ada peran';
   $('chipCode').textContent = T === offline ? '🤖 Offline' : `🔗 Room: ${v.code}`;
@@ -555,6 +563,7 @@ function showEnd() {
       <ul style="margin-top:4px">${r.lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul></div></div>`).join('');
   $('btnAgain').classList.toggle('hidden', !V.canControl);
   $('end').classList.remove('hidden', 'mini'); $('btnMin').textContent = '▼ Lihat podium';
+  $('replay').classList.add('hidden'); $('btnReplay').classList.toggle('hidden', !(V.timeline && V.timeline.length));
 }
 $('btnRoles').onclick = () => { $('guide').classList.remove('hidden'); };
 $('btnMin').onclick = () => { const c = $('end').classList.toggle('mini'); $('btnMin').textContent = c ? '▲ Kontribusi' : '▼ Lihat podium'; };
@@ -595,3 +604,137 @@ setInterval(() => {
   c.textContent = `${V.paused ? '⏸' : '⏱'} ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   c.classList.remove('hidden');
 }, 250);
+
+
+// ================= AKUN · PROFIL · PERINGKAT =================
+const GROUPS = [['Orang Tua', 0, 3, '👴'], ['Nenek', 3, 6, '👵'], ['Laki-laki Muda', 6, 9, '🧑'], ['Gadis Stylish', 9, 13, '💃'], ['Anak-anak', 13, 16, '🧒']];
+const lookIcon = (i) => (i == null ? '🎲' : (GROUPS.find((g) => i >= g[1] && i < g[2]) || GROUPS[0])[3]);
+const lookName = (i) => (i == null ? 'Acak' : VARIANTS[i]?.name || 'Acak');
+function renderLook() { $('lookName').textContent = lookName(auth.look()); }
+renderLook();
+$('btnLook').onclick = () => {
+  const cur = auth.look();
+  $('looks').innerHTML = `<button data-l="" class="${cur == null ? 'on' : ''}"><b>🎲</b>Acak<small>dipilihkan otomatis</small></button>` +
+    GROUPS.map(([g, a, b, ic]) => `<h4>${ic} ${g}</h4>` + VARIANTS.slice(a, b).map((vr, k) => `<button data-l="${a + k}" class="${cur === a + k ? 'on' : ''}"><b>${ic}</b>${esc(vr.name)}<small>${esc(g)}</small></button>`).join('')).join('');
+  $('looks').querySelectorAll('[data-l]').forEach((b) => (b.onclick = async () => {
+    const val = b.dataset.l === '' ? null : Number(b.dataset.l);
+    $('lookM').classList.add('hidden'); auth.setLook(val).then(() => {}); renderLook(); renderAcct();
+    if (T) T.call('profile', T === offline ? { look: val ?? -1 } : auth.profile());
+  }));
+  $('lookM').classList.remove('hidden');
+};
+
+function renderAcct() {
+  const el = $('acct');
+  if (!auth.enabled) { el.classList.add('hidden'); $('lbShelf').classList.add('hidden'); return; }
+  el.classList.remove('hidden'); $('lbShelf').classList.remove('hidden');
+  if (auth.user) {
+    const t = auth.stats?.titles || [];
+    el.innerHTML = `<div class="av">${lookIcon(auth.look())}</div><div class="who"><b>${esc(auth.user.name)}</b><small>@${esc(auth.user.username)}${auth.stats ? ` · ${auth.stats.games} main · ${auth.stats.wins} menang` : ''}</small><div>${t.map((x) => `<span class="t">${esc(x)}</span>`).join('')}</div></div>
+      <button id="btnProf">👤 Profil</button><button id="btnOut">Keluar</button>`;
+    $('btnProf').onclick = openProfile; $('btnOut').onclick = () => { auth.logout(); renderAcct(); loadLb(); };
+    if (!$('inName').value.trim()) $('inName').value = auth.user.name;
+  } else {
+    el.innerHTML = `<div class="av">🎭</div><div class="who"><b>Main sebagai tamu</b><small>Daftar akun supaya skor, julukan &amp; peringkat tercatat.</small></div>
+      <button id="btnIn" class="b-cyan">Masuk</button><button id="btnReg">Daftar</button>`;
+    $('btnIn').onclick = () => openAuth(false); $('btnReg').onclick = () => openAuth(true);
+  }
+}
+let regMode = false;
+function openAuth(reg) {
+  regMode = reg;
+  $('tabLogin').classList.toggle('on', !reg); $('tabReg').classList.toggle('on', reg);
+  document.querySelectorAll('#authM .reg-only').forEach((e) => e.classList.toggle('hidden', !reg));
+  $('auGo').textContent = reg ? 'Daftar & Masuk' : 'Masuk';
+  $('auPass').autocomplete = reg ? 'new-password' : 'current-password';
+  $('auMsg').textContent = ''; if (reg && !$('auName').value) $('auName').value = $('inName').value.trim();
+  $('authM').classList.remove('hidden'); setTimeout(() => $('auUser').focus(), 50);
+}
+$('tabLogin').onclick = () => openAuth(false); $('tabReg').onclick = () => openAuth(true);
+$('authForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const u = $('auUser').value.trim().toLowerCase(), p = $('auPass').value;
+  if (regMode && p !== $('auPass2').value) return ($('auMsg').textContent = 'Ulangi password tidak sama.');
+  $('auGo').disabled = true; $('auMsg').textContent = regMode ? 'Mendaftarkan…' : 'Memeriksa…';
+  const r = regMode ? await auth.register(u, $('auName').value.trim(), p) : await auth.login(u, p);
+  $('auGo').disabled = false;
+  if (!r.ok) return ($('auMsg').textContent = r.error);
+  $('authM').classList.add('hidden'); $('auPass').value = $('auPass2').value = '';
+  $('inName').value = auth.user.name; LS.set('ww_name', auth.user.name);
+  renderLook(); await auth.refresh(); renderAcct(); loadLb();
+  if (T && T !== offline) sendProfile();
+};
+const ROLE_LABEL = (r) => { const k = Object.keys(ROLES).find((x) => ROLES[x].name === r); return k ? `${ROLES[k].icon} ${r}` : r; };
+async function openProfile() {
+  $('profM').classList.remove('hidden'); $('profBody').innerHTML = '<div class="empty">Memuat…</div>';
+  const r = await auth.refresh();
+  if (!r.ok) { $('profBody').innerHTML = `<div class="empty">${esc(r.error || 'Gagal memuat.')}</div>`; renderAcct(); return; }
+  const s = r.stats, rate = s.games ? Math.round((s.wins / s.games) * 100) : 0;
+  const fav = Object.entries(s.roles).sort((a, b) => b[1].games - a[1].games)[0];
+  $('profBody').innerHTML = `<div class="acct" style="margin-top:10px"><div class="av">${lookIcon(auth.look())}</div><div class="who"><b>${esc(r.user.name)}</b><small>@${esc(r.user.username)} · karakter: ${esc(lookName(auth.look()))}</small><div>${s.titles.map((x) => `<span class="t">${esc(x)}</span>`).join('')}</div></div></div>
+    <div class="stats"><div><b>${s.games}</b><small>Main</small></div><div><b>${s.wins}</b><small>Menang</small></div><div><b>${rate}%</b><small>Rasio menang</small></div><div><b>${s.points}</b><small>Total poin</small></div><div><b>${s.alive}</b><small>Selamat</small></div></div>
+    <h3 class="cinzel" style="margin:6px 0">Peran ${fav ? `· favorit: ${esc(ROLE_LABEL(fav[0]))}` : ''}</h3>
+    <div class="prof-roles">${Object.entries(s.roles).sort((a, b) => b[1].games - a[1].games).map(([k, x]) => `<div><span>${esc(ROLE_LABEL(k))}</span><span class="muted">${x.games}× main · ${x.wins} menang</span></div>`).join('') || '<div class="muted">Belum ada permainan tercatat.</div>'}</div>
+    <h3 class="cinzel" style="margin:12px 0 6px">10 permainan terakhir</h3>
+    <div class="prof-recent">${s.recent.map((g) => `<div><span>${g.won ? '🏆' : '💀'} ${esc(ROLE_LABEL(g.role))}</span><span class="muted">${g.points} poin · ${new Date(g.at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span></div>`).join('') || '<div class="muted">—</div>'}</div>
+    <details style="margin-top:12px"><summary class="muted" style="cursor:pointer">🔑 Ganti password</summary><form id="pwForm" class="auth-form"><input id="pwOld" type="password" placeholder="Password lama" autocomplete="current-password" /><input id="pwNew" type="password" placeholder="Password baru (min. 6)" autocomplete="new-password" /><button>Simpan</button><div class="msg" id="pwMsg"></div></form></details>`;
+  $('pwForm').onsubmit = async (e) => { e.preventDefault(); $('pwMsg').textContent = 'Menyimpan…'; const x = await auth.changePassword($('pwOld').value, $('pwNew').value); $('pwMsg').textContent = x.ok ? '✔ Password diganti.' : x.error; };
+  renderAcct();
+}
+async function loadLb() {
+  if (!auth.enabled) return;
+  const r = await auth.leaderboard();
+  if (!r.ok) { $('lbList').innerHTML = `<div class="empty">${esc(r.error)}</div>`; return; }
+  $('lbSince').textContent = 'sejak Senin ' + new Date(r.since).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
+  const medal = ['🥇', '🥈', '🥉'];
+  $('lbList').innerHTML = r.top.length ? r.top.map((x, i) => `<div class="r ${auth.user && x.id === auth.user.id ? 'me' : ''}"><span class="n">${medal[i] || i + 1}</span><span><b>${esc(x.name)}</b> <small>@${esc(x.username)}</small></span><small>${x.games} main · ${x.wins} menang</small><span class="p">${x.points} poin</span></div>`).join('')
+    : '<div class="empty">Belum ada skor minggu ini. Main dengan akun supaya namamu muncul di sini!</div>';
+}
+$('btnLb').onclick = loadLb;
+renderAcct(); loadLb();
+if (auth.token) auth.refresh().then(() => { renderAcct(); renderLook(); });
+
+// host melaporkan hasil game ke Google Sheet (hanya pemain yang login; offline tidak dicatat)
+const reported = new Set();
+function reportResult() {
+  if (!auth.enabled || T === offline || !T?.game?.resultReport) return;
+  const rep = T.game.resultReport(); if (!rep || reported.has(rep.gameId)) return;
+  reported.add(rep.gameId);
+  auth.report(rep).then((r) => { if (r.ok && r.saved) { banner(`📊 Skor ${r.saved} pemain berakun tercatat di peringkat mingguan.`, 'info'); } });
+}
+
+// ================= EMOTE =================
+$('emobar').innerHTML = Object.keys(EMO_ICON).map((k, i) => `<button data-e="${k}" title="${EMO_LABEL[k]} (tombol ${i + 1})"><b>${EMO_ICON[k]}</b>${EMO_LABEL[k]}</button>`).join('');
+let emoCool = 0;
+function emote(k) { if (!T || !V || Date.now() < emoCool) return; emoCool = Date.now() + 1300; T.call('emote', { k }); }
+$('emobar').querySelectorAll('[data-e]').forEach((b) => (b.onclick = () => { emote(b.dataset.e); $('emobar').classList.add('hidden'); $('tEmote').classList.remove('on'); }));
+$('tEmote').onclick = () => { const h = $('emobar').classList.toggle('hidden'); $('tEmote').classList.toggle('on', !h); const d = $('dock'); document.documentElement.style.setProperty('--dockH', (d?.offsetHeight || 100) + 'px'); };
+addEventListener('keydown', (e) => {
+  if (!V || /input|textarea|select/i.test(document.activeElement?.tagName || '')) return;
+  const i = Number(e.key) - 1, k = Object.keys(EMO_ICON)[i];
+  if (k && !e.ctrlKey && !e.metaKey && !e.altKey) emote(k);
+});
+
+// ================= MUSIK =================
+const setMusicBtn = () => { $('tSound').classList.toggle('on', audio.musicOn); $('tSound').title = audio.musicOn ? 'Musik: nyala' : 'Musik: mati'; };
+setMusicBtn();
+$('tSound').onclick = () => { audio.init(); audio.setMusic(!audio.musicOn); LS.set('ww_music', audio.musicOn ? '1' : '0'); setMusicBtn(); };
+
+// ================= REPLAY =================
+const PH_NAME = { night: 'Malam', dawn: 'Fajar', day: 'Siang', vote: 'Voting', verdict: 'Vonis', hunter: 'Hunter', end: 'Akhir' };
+let rpTimer = null;
+function renderReplay(upto = Infinity) {
+  const tl = V?.timeline || []; let html = '', lastHead = '';
+  tl.slice(0, upto).forEach((e) => {
+    const night = e.ph === 'night' || e.ph === 'dawn', head = e.ph === 'end' ? '🏁 Akhir permainan' : `${night ? '🌙 Malam' : '☀️ Hari'} ke-${e.day}`;
+    if (head !== lastHead) { html += `<li class="hd">${head}</li>`; lastHead = head; }
+    html += `<li class="${night ? 'night' : 'day'} ${e.secret ? 'secret' : ''}"><b>${e.icon}</b><span>${esc(e.text)}${e.secret ? '<small>aksi rahasia — baru terungkap sekarang</small>' : ''}</span></li>`;
+  });
+  $('tl').innerHTML = html; $('tl').scrollTop = $('tl').scrollHeight;
+}
+$('btnReplay').onclick = () => { if ($('replay').classList.toggle('hidden')) return; renderReplay(); $('replay').scrollIntoView({ behavior: 'smooth', block: 'nearest' }); };
+$('rpAll').onclick = () => { clearInterval(rpTimer); renderReplay(); };
+$('rpPlay').onclick = () => {
+  clearInterval(rpTimer); let i = 0; const n = V?.timeline?.length || 0; renderReplay(0);
+  rpTimer = setInterval(() => { i++; renderReplay(i); audio.tone(520 + (i % 5) * 80, 0.12, 'triangle', 0.05); if (i >= n) clearInterval(rpTimer); }, 900);
+};

@@ -27,6 +27,34 @@ canvas#scene{position:fixed;inset:0;width:100%;height:100%;display:block;touch-a
 .bubble{background:#f3e6c8;color:#2a1608;border:1px solid #b88a3e;border-radius:10px;padding:5px 10px;font-size:13px;font-weight:700;max-width:220px;white-space:normal;text-align:center;position:relative;animation:pop .2s;box-shadow:0 6px 18px rgba(0,0,0,.5)}
 .bubble:after{content:"";position:absolute;left:50%;bottom:-6px;margin-left:-6px;border:6px solid transparent;border-top-color:#f3e6c8;border-bottom:0}
 @keyframes pop{from{transform:scale(.7);opacity:0}}
+.emo{font-size:30px;line-height:1;filter:drop-shadow(0 3px 6px rgba(0,0,0,.6));animation:emoPop .35s cubic-bezier(.2,1.6,.4,1),emoFloat 1.6s ease-in-out .35s infinite}
+@keyframes emoPop{from{transform:scale(.2) translateY(10px);opacity:0}}@keyframes emoFloat{50%{transform:translateY(-5px)}}
+.emobar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--dockH,120px) + 14px);display:flex;gap:6px;padding:8px;background:var(--glass2);border:1px solid var(--line2);border-radius:14px;z-index:6;box-shadow:0 10px 30px rgba(0,0,0,.5);flex-wrap:wrap;justify-content:center;max-width:calc(100vw - 20px)}
+.emobar button{display:grid;justify-items:center;gap:2px;padding:6px 8px;min-width:58px;font:700 11px "Nunito Sans";background:transparent}
+.emobar button b{font-size:24px;line-height:1}
+.acct{display:flex;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:rgba(0,0,0,.25);flex-wrap:wrap}
+.acct .av{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;font-size:20px;background:radial-gradient(circle at 35% 30%,#7f1414,#200808);border:1px solid var(--gold)}
+.acct .who{flex:1;display:grid;line-height:1.25}.acct .who small{color:var(--dim);font-size:12px}
+.acct .t{display:inline-block;background:rgba(216,176,106,.15);border:1px solid var(--line);border-radius:999px;padding:0 7px;font-size:11px;margin:2px 3px 0 0;color:var(--gold2)}
+.acct button{padding:6px 10px;font-size:12.5px}
+.tabs{display:flex;gap:6px}.tabs button.on{background:linear-gradient(180deg,#e0453a,#8f1616);color:#fff4e6;border-color:#ffb08a}
+.auth-form{display:grid;gap:10px;margin-top:14px}
+.looks{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;margin-top:14px}
+.looks button{display:grid;justify-items:center;gap:4px;padding:12px 6px;font:700 13px "Nunito Sans";text-align:center}
+.looks button b{font-size:30px}.looks button small{color:var(--dim);font-weight:600;font-size:11px}
+.looks button.on{border-color:var(--gold2);box-shadow:0 0 0 2px var(--gold),0 0 20px rgba(255,200,120,.35)}
+.looks h4{grid-column:1/-1;margin:6px 0 0;font-family:Cinzel,serif;color:var(--gold)}
+.lb{display:grid;gap:6px}.lb .r{display:grid;grid-template-columns:34px 1fr auto auto;gap:10px;align-items:center;padding:7px 12px;border:1px solid var(--line);border-radius:9px;background:rgba(0,0,0,.25)}
+.lb .r.me{border-color:var(--gold2);box-shadow:0 0 14px rgba(255,200,120,.2)}.lb .n{font:900 16px Cinzel,serif;color:var(--gold2);text-align:center}
+.lb .r small{color:var(--dim)}.lb .p{font-weight:800;color:var(--gold2)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin:12px 0}
+.stats div{border:1px solid var(--line);border-radius:9px;padding:8px;text-align:center;background:rgba(0,0,0,.25)}.stats b{display:block;font:900 22px Cinzel,serif;color:var(--gold2)}.stats small{color:var(--dim)}
+.prof-roles,.prof-recent{display:grid;gap:4px;font-size:13.5px}.prof-roles div,.prof-recent div{display:flex;justify-content:space-between;gap:8px;border-bottom:1px dashed rgba(216,176,106,.15);padding:3px 0}
+.replay{margin-top:12px}.tl{list-style:none;padding:0;margin:10px 0 0;display:grid;gap:4px;max-height:46vh;overflow:auto}
+.tl li{display:grid;grid-template-columns:30px 1fr;gap:8px;align-items:start;padding:6px 10px;border-left:3px solid var(--line);background:rgba(0,0,0,.22);border-radius:0 8px 8px 0;animation:pop .3s}
+.tl li.night{border-left-color:#5a6fb0}.tl li.secret{opacity:.85;font-style:italic}.tl li.day{border-left-color:var(--gold)}
+.tl li.hd{display:block;background:none;border:0;font:800 13px Cinzel,serif;color:var(--gold);padding:8px 0 2px}
+.tl li b{font-size:18px;text-align:center}.tl li small{display:block;color:var(--dim);font-style:normal;font-size:11px}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes pulseGlow{0%,100%{filter:drop-shadow(0 0 6px rgba(255,59,48,.7))}50%{filter:drop-shadow(0 0 18px rgba(255,59,48,1))}}
 .hidden{display:none!important}
@@ -204,6 +232,8 @@ hr{border:0;border-top:1px solid var(--line);margin:2px 0}
      Isi dengan URL dari dashboard Metered, contoh:
      https://namaapp.metered.live/api/v1/turn/credentials?apiKey=XXXX  */
   window.WW_TURN_URL = "";
+  // URL Web App Google Apps Script untuk akun (lihat deploy/akun-google-sheet/PANDUAN.md). Kosong = mode tamu saja.
+  window.WW_AUTH_URL = "";
   /* Firebase Realtime Database: kalau diisi, game memakai Firebase (lebih stabil dari P2P). */
   window.WW_FIREBASE = {
     apiKey: "AIzaSyDADDkfjjsxud1KsL-hQ-zMEkYaCpA_zbY",
@@ -233,7 +263,8 @@ hr{border:0;border-top:1px solid var(--line);margin:2px 0}
     <div class="lobby-grid">
       <section class="card">
         <h2 class="ptitle">Gerbang Desa</h2>
-        <input id="inName" placeholder="Nama kamu" maxlength="16" autocomplete="nickname" />
+        <div class="acct hidden" id="acct"></div>
+        <div class="row"><input id="inName" class="grow" placeholder="Nama kamu" maxlength="16" autocomplete="nickname" /><button id="btnLook" title="Pilih karakter">🎭 <span id="lookName">Acak</span></button></div>
         <div class="online-only" style="display:grid;gap:10px">
           <input id="inRoomName" placeholder="Nama desa (opsional)" maxlength="30" />
           <label class="theme-pick" for="inTheme"><span>Tema desa</span>
@@ -257,6 +288,10 @@ hr{border:0;border-top:1px solid var(--line);margin:2px 0}
         <div class="row"><input id="inCode" class="grow" placeholder="Kode room (6 huruf)" maxlength="6" style="text-transform:uppercase" /><button id="btnJoinCode">Gabung Kode</button></div>
       </section>
     </div>
+    <section class="shelf lb-shelf hidden" id="lbShelf">
+      <div class="row" style="justify-content:space-between"><h2 class="ptitle grow">🏆 Peringkat Mingguan</h2><span class="muted" id="lbSince" style="font-size:13px"></span><button id="btnLb" title="Muat ulang">↻</button></div>
+      <div class="lb" id="lbList"><div class="empty">Memuat…</div></div>
+    </section>
     <section class="shelf">
       <h2 class="ptitle">Kitab Peran</h2>
       <div class="tomes" id="tomes"></div>
@@ -274,6 +309,8 @@ hr{border:0;border-top:1px solid var(--line);margin:2px 0}
       <div class="chip timer hidden" id="chipTimer">⏱ 0:00</div>
     </div>
     <div class="tools">
+      <button id="tEmote" title="Emote cepat">😀<span class="lbl"> Emote</span></button>
+      <button id="tSound" title="Musik on/off">🎵<span class="lbl"> Musik</span></button>
       <button id="tFs" title="Layar penuh">⛶<span class="lbl"> FS</span></button>
       <button id="tCard">🃏<span class="lbl"> Card</span></button>
       <button id="tWarga">📋<span class="lbl"> Warga</span></button>
@@ -293,6 +330,7 @@ hr{border:0;border-top:1px solid var(--line);margin:2px 0}
     <form class="row" id="chatForm"><input id="chatIn" class="grow" maxlength="240" autocomplete="off" /><button class="b-cyan">Kirim</button></form>
   </div>
 
+  <div class="emobar hidden" id="emobar"></div>
   <div class="card" id="dock"></div>
   <div class="cam"><button id="cL" aria-label="Putar kiri">◀</button><button id="cR" aria-label="Putar kanan">▶</button><button id="cIn" aria-label="Perbesar">🔍+</button><button id="cOut" aria-label="Perkecil">🔍−</button></div>
 </div>
@@ -308,11 +346,34 @@ hr{border:0;border-top:1px solid var(--line);margin:2px 0}
   <button class="b-cyan" data-close="reveal" style="width:100%">Saya mengerti</button>
 </div></div>
 <div class="modal hidden" id="end"><div class="card">
-  <div class="end-head"><h2 id="endTitle"></h2><div class="row"><button id="btnMin">▼ Lihat podium</button><button id="btnRoles">📜 Semua peran</button><button class="x" data-close="end" aria-label="Tutup">✕</button></div></div>
+  <div class="end-head"><h2 id="endTitle"></h2><div class="row"><button id="btnMin">▼ Lihat podium</button><button id="btnReplay">🎞 Replay</button><button id="btnRoles">📜 Semua peran</button><button class="x" data-close="end" aria-label="Tutup">✕</button></div></div>
   <div class="muted" id="endSub"></div>
   <div class="podium" id="podium"></div>
   <div class="rest" id="endList"></div>
+  <div class="replay hidden" id="replay"><div class="row" style="justify-content:space-between"><h3 style="margin:0">🎞 Kilas Balik Permainan</h3><div class="row"><button id="rpPlay">▶ Putar</button><button id="rpAll">Tampilkan semua</button></div></div><ol class="tl" id="tl"></ol></div>
   <div class="row"><button class="b-green grow hidden" id="btnAgain">🔁 Main lagi (kembali ke lobby)</button></div>
+</div></div>
+
+<div class="modal hidden" id="authM"><div class="card" style="width:min(420px,100%)">
+  <div class="row" style="justify-content:space-between"><div class="tabs"><button id="tabLogin" class="on">Masuk</button><button id="tabReg">Daftar</button></div><button class="x" data-close="authM" aria-label="Tutup">✕</button></div>
+  <form id="authForm" class="auth-form" autocomplete="on">
+    <input id="auUser" placeholder="Username" maxlength="16" autocomplete="username" autocapitalize="none" />
+    <input id="auName" class="reg-only hidden" placeholder="Nama tampilan di game" maxlength="16" autocomplete="nickname" />
+    <input id="auPass" type="password" placeholder="Password (min. 6 karakter)" maxlength="64" autocomplete="current-password" />
+    <input id="auPass2" class="reg-only hidden" type="password" placeholder="Ulangi password" maxlength="64" autocomplete="new-password" />
+    <div class="reg-only hidden muted" style="font-size:12.5px;color:var(--amber)">⚠ Password bisa dilihat admin. Jangan pakai password yang sama dengan email, bank, atau akun pentingmu.</div>
+    <button class="b-cyan" id="auGo">Masuk</button>
+    <div class="msg" id="auMsg"></div>
+    <div class="muted" style="font-size:12.5px">Tidak mau daftar? Tutup jendela ini, isi nama, lalu langsung main sebagai <b>tamu</b> — hanya skor &amp; peringkat yang tidak tercatat.</div>
+  </form>
+</div></div>
+<div class="modal hidden" id="profM"><div class="card" style="width:min(560px,100%)">
+  <div class="row" style="justify-content:space-between"><h2>👤 Profil</h2><button class="x" data-close="profM" aria-label="Tutup">✕</button></div>
+  <div id="profBody"><div class="empty">Memuat…</div></div>
+</div></div>
+<div class="modal hidden" id="lookM"><div class="card" style="width:min(720px,100%)">
+  <div class="row" style="justify-content:space-between"><div><h2>🎭 Pilih Karakter</h2><div class="muted">Karaktermu di desa. "Acak" = dipilihkan otomatis.</div></div><button class="x" data-close="lookM" aria-label="Tutup">✕</button></div>
+  <div class="looks" id="looks"></div>
 </div></div>
 
 <script type="module" src="/src/main.js"></script>

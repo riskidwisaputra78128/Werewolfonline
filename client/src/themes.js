@@ -18,7 +18,8 @@ function glowTex() {
   x.fillStyle = g; x.fillRect(0, 0, s, s); glowTexC = new THREE.CanvasTexture(c); glowTexC.colorSpace = THREE.SRGBColorSpace; return glowTexC;
 }
 const sprite = (color, size, op = 0.8) => { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(), color, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: op })); s.scale.setScalar(size); return s; };
-const shadow = (o) => { o.traverse((m) => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } }); return o; };
+// hanya benda besar (bangunan, lapak, mobil) yang membuat bayangan; benda kecil cukup menerima bayangan
+const shadow = (o) => { o.updateMatrixWorld(true); o.traverse((m) => { if (!m.isMesh) return; m.receiveShadow = true; if (!m.geometry.boundingSphere) m.geometry.computeBoundingSphere(); const r = m.geometry.boundingSphere.radius * Math.max(m.scale.x, m.scale.y, m.scale.z); m.castShadow = r > 0.6; }); return o; };
 function rng(seed) { let s = seed; return () => ((s = Math.imul(s ^ (s >>> 15), 2246822507) + 0x9e3779b9 >>> 0) / 4294967296); }
 /** cincin datar dengan UV memanjang (u = keliling) untuk jalan/trotoar */
 function ringStrip(r1, r2, seg, uRepeat, rows = 4) {

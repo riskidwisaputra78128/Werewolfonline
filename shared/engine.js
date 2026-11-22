@@ -26,6 +26,8 @@ export const COLORS = ['#c0392b', '#2980b9', '#27ae60', '#8e44ad', '#d35400', '#
 
 import { BotChat } from './botchat.js';
 const MAX_PLAYERS = 16, MIN_PLAYERS = 4;
+export const EMOTES = ['wave', 'laugh', 'shock', 'think', 'angry', 'sus', 'cry', 'ok'];
+const EMOTE_MS = 4000;
 // kode penyebab kematian → dipakai klien untuk memilih animasi
 const CAUSE_CODE = { 'dimangsa serigala': 'wolf', 'mengorbankan diri melindungi warga': 'guard', diracun: 'poison', 'terkena panah Hunter': 'hunter', 'ditembak sniper': 'sniper', 'dieksekusi warga': 'vote' };
 const newStats = () => ({ checks: 0, found: 0, saves: 0, guardSaves: 0, sacrifice: 0, kills: 0, poisonWolf: 0, poisonVillager: 0, hunterWolf: 0, hunterMiss: 0, votes: 0, wolfVotes: 0, wolfExec: 0, misled: 0, chats: 0 });
@@ -82,10 +84,42 @@ export class Game {
   sys(text, channel = 'all') { this.pushChat({ id: 'sys', name: 'Moderator Desa', text, channel, sys: true }); }
   pushChat(m) { m.t = Date.now(); m.n = (this.chatSeq = (this.chatSeq || 0) + 1); this.chat.push(m); if (this.chat.length > 200) this.chat.shift(); }
 
+  // ---------------- profil / emote / cuaca ----------------
+  applyExtra(p, x = {}) {
+    if (x.look !== undefined) { const l = Number(x.look); p.look = Number.isInteger(l) && l >= 0 && l < 16 ? l : null; }
+    if (x.token !== undefined) { const t = String(x.token || '').slice(0, 200); p.token = t || null; p.uid = t ? t.split('.')[0] : null; }
+  }
+  setProfile(id, x = {}) { const p = this.players.get(id); if (!p) return { ok: false }; this.applyExtra(p, { look: x.look, token: x.token }); this.emit(); return { ok: true }; }
+  /** daftar hasil untuk dilaporkan ke server akun (hanya pemain yang login) */
+  resultReport() {
+    if (this.phase !== 'end' || !this.winner) return null;
+    const pod = this.podium(), score = {}; for (const r of pod.rows || pod) score[r.id] = r.score;
+    const players = this.seated.filter((p) => p.token && p.role && !p.isBot).map((p) => ({ token: p.token, role: p.role, team: ROLES[p.role].team, won: ROLES[p.role].team === this.winner, score: score[p.id] || 0, alive: p.alive }));
+    return players.length ? { gameId: this.gameId, code: this.code, day: this.day, theme: this.settings.theme, players } : null;
+  }
+  emote(id, k) {
+    const p = this.players.get(id); if (!p || !EMOTES.includes(k)) return { ok: false };
+    const now = Date.now(); if (p.emote && now - p.emote.t < 1200) return { ok: false };
+    // orang mati / malam hari: emote hanya terlihat oleh yang boleh melihat (dibatasi di view)
+    p.emote = { k, t: now }; this.emit();
+    setTimeout(() => this.emit(), EMOTE_MS + 50);
+    return { ok: true };
+  }
+  rollWeather(night) {
+    const theme = this.settings.theme, indoor = theme === 'kantor';
+    if (indoor) { this.weather = 'cerah'; return; }
+    const r = Math.random(), prev = this.weather;
+    let w = night ? (r < 0.30 ? 'kabut' : r < 0.50 ? 'hujan' : r < 0.62 ? 'badai' : 'cerah') : (r < 0.15 ? 'hujan' : r < 0.25 ? 'kabut' : r < 0.30 ? 'badai' : 'cerah');
+    if (prev === 'badai' && w === 'badai') w = 'hujan';
+    this.weather = w;
+  }
+  track(icon, text, secret = false) { (this.timeline = this.timeline || []).push({ day: this.day, ph: this.phase, icon, text, secret }); if (this.timeline.length > 160) this.timeline.shift(); }
+
   // ---------------- lobby ----------------
-  addPlayer(id, name, isBot = false) {
+  addPlayer(id, name, isBot = false, extra = {}) {
     if (this.players.has(id)) {
       const p = this.players.get(id); p.connected = true; if (name) p.name = clean(name, 16) || p.name;
+      this.applyExtra(p, extra);
       return { ok: true, rejoin: true };
     }
     // boleh masuk saat lobby atau saat game baru selesai (ikut ronde berikutnya)
@@ -96,7 +130,8 @@ export class Game {
     let base = nm, k = 2; while (names.has(nm.toLowerCase())) nm = `${base} ${k++}`;
     const used = new Set([...this.players.values()].map((p) => p.color));
     const color = COLORS.find((c) => !used.has(c)) || pick(COLORS);
-    this.players.set(id, { id, name: nm, isBot, connected: true, alive: true, role: null, color, joinedAt: Date.now() });
+    const np = { id, name: nm, isBot, connected: true, alive: true, role: null, color, joinedAt: Date.now(), look: null, uid: null, token: null };
+    this.applyExtra(np, extra); this.players.set(id, np);
     if (id !== this.modId) this.sys(`${nm} bergabung ke desa.`);
     this.autoWolves();
     this.emit();
@@ -184,7 +219,7 @@ export class Game {
       Object.assign(p, { role: roles[i], alive: true, diedDay: null, cause: null, causeCode: null, killer: null, notes: [], lastProtect: null, potions: { heal: true, poison: true }, stats: newStats() });
     });
     if (this.modId) this.players.get(this.modId).role = 'moderator';
-    this.day = 0; this.winner = null; this.log = []; this.chat = this.chat.slice(-10);
+    this.day = 0; this.winner = null; this.log = []; this.chat = this.chat.slice(-10); this.timeline = []; this.weather = 'cerah'; this.gameId = this.code + '-' + Date.now().toString(36);
     this.announce('Permainan dimulai. Periksa kartu peranmu!', 'phase');
     this.sys(`Permainan dimulai dengan ${seats.length} pemain: ${this.roleSummary(roles)}.`);
     this.setPhase('reveal', 8);
@@ -234,7 +269,7 @@ export class Game {
     clearTimeout(this.timer); this.botTimers.forEach(clearTimeout);
     for (const p of this.players.values()) { p.alive = true; p.role = null; }
     for (const p of [...this.players.values()]) if (!p.connected && !p.isBot) this.players.delete(p.id);
-    this.phase = 'lobby'; this.deadline = 0; this.winner = null; this.day = 0;
+    this.phase = 'lobby'; this.deadline = 0; this.winner = null; this.day = 0; this.timeline = []; this.weather = 'cerah';
     this.sys('Permainan diulang. Kembali ke lobby.');
     this.emit();
   }
@@ -243,6 +278,8 @@ export class Game {
   beginNight() {
     this.day++;
     this.night = { wolfVotes: {}, see: {}, protect: null, guard: null, heal: false, poison: null, snipe: null, done: new Set() };
+    this.rollWeather(true);
+    if (this.weather !== 'cerah') this.sys({ kabut: '🌫 Kabut tebal turun menyelimuti desa…', hujan: '🌧 Hujan turun malam ini…', badai: '⛈ Badai petir mengguncang desa!' }[this.weather]);
     this.announce(`🌙 Malam ke-${this.day}. Desa tertidur…`, 'phase');
     this.sys(`Malam ke-${this.day} tiba. Para peran malam, lakukan aksimu.`);
     this.scheduleBots('night');
@@ -338,6 +375,14 @@ export class Game {
     if (doctor) doctor.lastProtect = n.protect;
     let saved = false;
     const st = (pl, k) => { if (pl?.stats) pl.stats[k]++; };
+    const nm = (pid) => this.players.get(pid)?.name || '?';
+    if (victim) this.track('🐺', `Serigala mengincar ${victim.name}`, true);
+    for (const [sid2, tid] of Object.entries(n.see || {})) { const t = this.players.get(tid); if (t) this.track('🔮', `${nm(sid2)} menerawang ${t.name} → ${t.role === 'werewolf' ? 'WEREWOLF' : 'bukan werewolf'}`, true); }
+    if (n.protect && doctor) this.track('💉', `${doctor.name} melindungi ${nm(n.protect)}`, true);
+    const gd = this.alive.find((p) => p.role === 'guardian'); if (n.guard && gd) this.track('🛡', `${gd.name} mengawal ${nm(n.guard)}`, true);
+    if (n.heal && witch) this.track('🧪', `${witch.name} memakai ramuan penyembuh`, true);
+    if (n.poison && witch) this.track('☠', `${witch.name} meracuni ${nm(n.poison)}`, true);
+    const hn = this.alive.find((p) => p.role === 'hunter'); if (n.snipe && hn) this.track('🎯', `${hn.name} membidik ${nm(n.snipe)} dengan sniper`, true);
     if (victim) {
       if (n.protect === victim.id) { saved = true; st(doctor, 'saves'); }
       if (n.heal && witch && witch.potions.heal) { if (!saved) st(witch, 'saves'); saved = true; witch.potions.heal = false; }
@@ -367,10 +412,12 @@ export class Game {
     this.night = null;
 
     if (!this.pendingDeaths.length) {
+      this.track(saved ? '✨' : '🌅', saved ? 'Korban serangan malam berhasil diselamatkan' : 'Malam berlalu tanpa korban');
       this.announce(saved ? '☀ Fajar tiba. Seseorang diserang semalam, tetapi berhasil diselamatkan!' : '☀ Fajar tiba. Malam ini tidak ada korban.', 'phase');
     } else {
       for (const id of this.pendingDeaths) {
         const d = this.players.get(id);
+        this.track('⚰', `${d.name} (${ROLES[d.role].name}) tewas — ${d.cause}`);
         this.announce(`☠ ${d.name} ditemukan tewas — ${d.cause}.${this.settings.revealRoles ? ` Ia adalah ${ROLES[d.role].icon} ${ROLES[d.role].name}.` : ''}`, 'death', d.id);
       }
     }
@@ -390,6 +437,7 @@ export class Game {
     }
     if (this.checkWin()) return;
     if (next === 'day') {
+      this.rollWeather(false);
       this.announce(`☀ Hari ke-${this.day}. Diskusikan siapa Werewolf-nya!`, 'phase');
       this.setPhase('day', this.settings.timers.day);
     } else {
@@ -404,6 +452,7 @@ export class Game {
     if (t && t.alive && t.id !== id && t.id !== this.modId) {
       const h = this.players.get(id); if (h?.stats) h.stats[t.role === 'werewolf' ? 'hunterWolf' : 'hunterMiss']++;
       this.kill(t, 'terkena panah Hunter', id);
+      this.track('🏹', `Panah terakhir ${this.players.get(id)?.name} menewaskan ${t.name} (${ROLES[t.role].name})`);
       this.announce(`🏹 Panah Hunter menembus ${t.name}!${this.settings.revealRoles ? ` Ia adalah ${ROLES[t.role].icon} ${ROLES[t.role].name}.` : ''}`, 'death', t.id);
     } else this.announce(timeout ? 'Hunter tidak sempat menembak.' : 'Hunter menurunkan busurnya.', 'info');
     this.sys(this.log[this.log.length - 1].text);
@@ -454,6 +503,7 @@ export class Game {
       msg = `⚖ Warga memutuskan mengeksekusi ${d.name} (${entries[0][1]} suara).${this.settings.revealRoles ? ` Ia adalah ${ROLES[d.role].icon} ${ROLES[d.role].name}.` : ''}`;
     }
     this.lastTally = t;
+    { const ex = this.lastExecuted && this.players.get(this.lastExecuted); this.track('⚖', ex ? `Warga mengeksekusi ${ex.name} (${ROLES[ex.role].name}) — ${entries[0][1]} suara` : msg); }
     this.announce(msg, this.pendingDeaths.length ? 'death' : 'info', this.pendingDeaths[0] || null);
     this.sys(msg);
     this.setPhase('verdict', 6);
@@ -471,6 +521,7 @@ export class Game {
     this.phase = 'end'; this.deadline = 0;
     const msg = w === 'village' ? '🎉 Semua Werewolf telah dieliminasi. WARGA MENANG!' : '🐺 Serigala menguasai desa. WEREWOLF MENANG!';
     this.announce(msg, 'win'); this.sys(msg);
+    this.track(w === 'village' ? '🏆' : '🐺', w === 'village' ? 'Warga menang!' : 'Werewolf menguasai desa!');
     this.emit();
     return true;
   }
@@ -557,6 +608,7 @@ export class Game {
       return {
         id: p.id, name: p.name, color: p.color, isBot: p.isBot, connected: p.connected, alive: p.alive,
         isHost: p.id === this.hostId, isMod: p.id === this.modId, role: showRole ? p.role : null,
+        look: p.look, uid: p.uid ? 1 : 0, emote: p.emote && Date.now() - p.emote.t < EMOTE_MS && (p.alive || !me || !me.alive || ended || isMod || this.phase === 'lobby') ? p.emote : null,
         cause: p.alive ? null : (p.causeCode || null), killer: p.alive ? null : (p.causeCode === 'hunter' ? p.killer : null), diedDay: p.alive ? null : p.diedDay,
       };
     });
@@ -591,7 +643,8 @@ export class Game {
     }
     if (this.phase === 'verdict') v.tally = this.lastTally;
     if (this.phase === 'hunter') v.hunterId = this.hunterId;
-    if (ended && this.winner) v.podium = this.podium();
+    if (ended && this.winner) { v.podium = this.podium(); v.timeline = this.timeline || []; v.gameId = this.gameId; }
+    v.weather = this.phase === 'lobby' ? 'cerah' : (this.weather || 'cerah');
     return v;
   }
 

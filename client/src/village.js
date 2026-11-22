@@ -9,6 +9,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { fbm, simplex2, mulberry32, smoothstep, lerp } from './noise.js';
 import * as T from './textures.js';
+import { Weather } from './weather.js';
 import { createBiped, clothMat, makePlayerWerewolf, makeElder } from './characters.js';
 import { FX, gradePass, disposeDeep } from './effects.js';
 import { createHero, upgradeWolf } from './heroes.js';
@@ -27,6 +28,9 @@ export function heightAt(x, z) {
 }
 
 const hexToRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+
+export const EMO_ICON = { wave: '👋', laugh: '😂', shock: '😱', think: '🤔', angry: '😡', sus: '🤨', cry: '😭', ok: '👍' };
+export const EMO_LABEL = { wave: 'Halo', laugh: 'Ngakak', shock: 'Kaget', think: 'Mikir', angry: 'Marah', sus: 'Curiga', cry: 'Sedih', ok: 'Setuju' };
 
 export class Village {
   constructor(canvas, { onPick, low } = {}) {
@@ -62,6 +66,7 @@ export class Village {
     this.buildLights(); this.buildSky(); this.buildGround(); this.buildForest(); this.buildGrass(); this.buildHouses(); this.buildFire(); this.buildFireflies();
     this.fx = new FX(this); this.fx.ambience(heightAt);
     this.podiumAt = new THREE.Vector3(0, heightAt(0, 0), 0); this.fireOn = 1; this.fx.buildPodium(this.podiumAt);
+    this.weather = new Weather(this);
     this.setTheme('kampung');
     this.fx.warmup();
     // model manusia realistis (GLB) dimuat di latar; begitu siap, avatar diganti
@@ -261,7 +266,8 @@ export class Village {
     for (let i = 0; i < 12; i++) { const s = new THREE.Mesh(new THREE.DodecahedronGeometry(0.25), this.stoneMat); s.position.set(Math.cos(i / 12 * 6.28) * 1.1, 0.1, Math.sin(i / 12 * 6.28) * 1.1); s.castShadow = true; f.add(s); }
     f.position.y = heightAt(0, 0); this.scene.add(f); this.fireGroup = f;
     this.fireLight = new THREE.PointLight(0xff8a3a, 30, 30, 1.5); this.fireLight.position.set(0, f.position.y + 1.3, 0);
-    this.fireLight.castShadow = !this.low; this.fireLight.shadow.mapSize.set(512, 512); this.scene.add(this.fireLight);
+    // bayangan lampu titik = 6 kali render scene (kubus) → terlalu mahal; cukup bayangan matahari/bulan
+    this.fireLight.castShadow = false; this.scene.add(this.fireLight);
     const n = 140; this.fireData = Array.from({ length: n }, () => ({ life: Math.random(), x: 0, z: 0, s: 0.5 + Math.random() }));
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
     this.fireP = new THREE.Points(g, new THREE.PointsMaterial({ map: T.glowSprite('255,150,60'), size: 0.9, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, color: 0xffaa55 }));
@@ -322,10 +328,17 @@ export class Village {
     const crowd = this.podiumIds.length ? seated.filter((p) => p.alive && !this.podiumIds.includes(p.id)).map((p) => p.id) : [];
     seated.forEach((p, i) => {
       let a = this.avatars.get(p.id);
+      const want = Number.isInteger(p.look) && p.look >= 0 && p.look < VARIANTS.length ? p.look : null;
+      // pemain mengganti karakter (hanya saat masih berdiri & tidak sedang animasi mati)
+      if (a && a.look !== want && p.alive && !a.death && !a.pending && !a.onPodium) {
+        disposeDeep(a.root); a.label.remove(); this.avatars.delete(p.id); a = null;
+      }
       if (!a) {
-        // tiap warga dapat tipe kostum berbeda (16 tipe, tidak kembar selama ≤16 pemain)
+        // karakter pilihan pemain; selain itu tiap warga dapat tipe berbeda (16 tipe, tidak kembar selama ≤16 pemain)
         const used = new Set([...this.avatars.values()].map((x) => x.variant));
-        let variant = 0; while (used.has(variant) && variant < VARIANTS.length - 1) variant++;
+        for (const q of seated) if (Number.isInteger(q.look) && q.id !== p.id) used.add(q.look);
+        let variant = want;
+        if (variant === null) { variant = 0; while (used.has(variant) && variant < VARIANTS.length - 1) variant++; }
         const rig = (humansReady() && createReal({ color: p.color, seed: p.id + p.name, uTime: this.uTime, variant: VARIANTS[variant] })) || createHero({ color: p.color, seed: p.id + p.name, uTime: this.uTime });
         const root = new THREE.Group(); root.add(rig.root);
         const ringMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false });
@@ -333,11 +346,12 @@ export class Village {
         const hit = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 2.2, 8), new THREE.MeshBasicMaterial({ visible: false })); hit.position.y = 1.1; hit.userData.pid = p.id; root.add(hit);
         const label = document.createElement('div'); label.className = 'plabel'; this.labels.appendChild(label);
         this.scene.add(root);
-        a = { rig, root, ring, hit, label, angle: 0, deadT: 0, bubbleT: 0, wasAlive: p.alive, variant };
+        a = { rig, root, ring, hit, label, angle: 0, deadT: 0, bubbleT: 0, wasAlive: p.alive, variant, look: want };
         if (!p.alive) a.deadPose = { x: -Math.PI / 2, z: 0, y: 0.15 };
         this.avatars.set(p.id, a);
       }
       a.p = p;
+      if (p.emote && p.emote.t !== a.emoT) { a.emoT = p.emote.t; a.emo = p.emote.k; a.emoUntil = performance.now() + 3600; if (p.emote.k === 'wave' || p.emote.k === 'laugh') a.waveT = 0.001; }
       const ang = (i / n) * Math.PI * 2 - Math.PI / 2;
       a.seat = new THREE.Vector3(Math.cos(ang) * rad, 0, Math.sin(ang) * rad);
       a.seat.y = heightAt(a.seat.x, a.seat.z);
@@ -526,6 +540,7 @@ export class Village {
     if ((this.frameN = (this.frameN + 1) % (this.shadowEvery || 3)) === 0 || this.deathQueue.length || this.cine) this.renderer.shadowMap.needsUpdate = true;
     this.uTime.value = t;
     this.applyTime(dt);
+    this.weather.update(dt, t);
     this.camera.position.sub(this.shakeOff);
     this.cameraDirector(dt);
     this.controls.update();
@@ -568,6 +583,7 @@ export class Village {
       if (a.grave && a.graveT < 1) { a.graveT = Math.min(1, a.graveT + dt * 1.5); a.grave.scale.y = Math.max(0.001, ease(a.graveT)); }
       if (a.wolf) { a.wolf.update(dt, 0, { howl: a.wolfT > 0 ? a.wolfT : 0 }); if (a.wolfT > 0) { a.wolfT += dt * 0.4; if (a.wolfT > 1) a.wolfT = 0; } }
       else if (a.onPodium) a.rig.update(dt, 0, { attack: a.cheer < 1 ? a.cheer : 0, attackArm: a.rank % 2, dance: true });
+      if (a.waveT > 0) { a.waveT += dt * 1.1; if (a.waveT >= 1) a.waveT = 0; }
       else if (standing && !a.death) a.rig.update(dt, 0, { attack: a.waveT > 0 ? a.waveT : 0 });
       const showRing = deco.ring || (this.hoverId === id && deco.selectable);
       a.ring.material.opacity += ((showRing ? 0.9 : 0) - a.ring.material.opacity) * Math.min(1, dt * 10);
@@ -580,7 +596,7 @@ export class Village {
       if (!off) {
         a.label.style.transform = `translate(-50%,-100%) translate(${(v.x * 0.5 + 0.5) * W}px,${(-v.y * 0.5 + 0.5) * H}px)`;
         if (a.bubbleT > 0) a.bubbleT -= dt;
-        const html = `${a.bubbleT > 0 ? `<div class="bubble">${esc(a.bubble)}</div>` : ''}<div class="pname ${p.alive ? '' : 'dead'} ${deco.you ? 'you' : ''}" style="--c:${p.color}">${deco.role ? `<span class="ri">${deco.role}</span>` : ''}${esc(p.name)}${p.connected ? '' : ' <span class="off">⚠</span>'}${deco.badge ? `<span class="badge">${deco.badge}</span>` : ''}</div>`;
+        const html = `${a.emoUntil > performance.now() ? `<div class="emo" data-k="${a.emo}">${EMO_ICON[a.emo] || '❔'}</div>` : ''}${a.bubbleT > 0 ? `<div class="bubble">${esc(a.bubble)}</div>` : ''}<div class="pname ${p.alive ? '' : 'dead'} ${deco.you ? 'you' : ''}" style="--c:${p.color}">${deco.role ? `<span class="ri">${deco.role}</span>` : ''}${esc(p.name)}${p.connected ? '' : ' <span class="off">⚠</span>'}${deco.badge ? `<span class="badge">${deco.badge}</span>` : ''}</div>`;
         if (html !== a.lastHtml) { a.label.innerHTML = html; a.lastHtml = html; }
       }
     }

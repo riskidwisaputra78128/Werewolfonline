@@ -75,7 +75,8 @@ const gold = () => M(0xd8b06a, { metalness: 0.9, roughness: 0.3 });
 const steel = () => M(0xc8ccd6, { metalness: 0.9, roughness: 0.25 });
 const wood = () => M(0x4a3020, { roughness: 0.8 });
 const glowM = (c) => new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: c, emissiveIntensity: 3 });
-const shadowed = (g) => { g.traverse((m) => { if (m.isMesh) m.castShadow = true; }); return g; };
+// aksesori kecil tidak perlu membuat bayangan (hemat draw call di pass bayangan)
+const shadowed = (g) => { g.traverse((m) => { if (m.isMesh) m.castShadow = false; }); return g; };
 
 /** topi/helm/mahkota; top = tinggi puncak kepala dari tulang Head; male = kepala berhelm (lebih besar) */
 export function headPiece(v, top, male, scale = 1) {

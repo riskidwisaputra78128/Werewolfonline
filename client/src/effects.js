@@ -202,7 +202,13 @@ export class FX {
     return this.add(new Timed((t) => { l.intensity = peak * Math.sin(Math.min(1, t / dur) * Math.PI); return t < dur; }, () => this.release(l)));
   }
   update(dt) {
-    this.list = this.list.filter((e) => { const ok = e.update(dt); if (!ok) e.dispose(); return ok; });
+    // PENTING: efek yang memunculkan efek lain saat update (cakar → darah, konfeti podium, jejak panah)
+    // dulu ikut terbuang dari daftar → tidak pernah dihapus & tetap digambar (draw call menumpuk tiap ronde).
+    // Sekarang efek baru yang muncul selama update ditampung di daftar baru lalu digabung.
+    const cur = this.list; this.list = [];
+    const keep = [];
+    for (const e of cur) { if (e.update(dt)) keep.push(e); else e.dispose(); }
+    this.list = keep.concat(this.list);
   }
 
   /** Ambience: lingkaran rune di lapangan, kabut tanah, bara api, debu sihir merah */

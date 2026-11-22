@@ -18,7 +18,7 @@ function dispatch(g, sid, ev, p = {}) {
   const map = {
     start: () => g.start(sid), settings: () => g.setSettings(sid, p), moderator: () => g.setModerator(sid, !!p.on), addBot: () => g.addBot(sid),
     kick: () => g.kick(sid, p.target), act: () => g.act(sid, p), vote: () => g.vote(sid, p.target), hunter: () => g.hunterShoot(sid, p.target),
-    chat: () => g.say(sid, p.text), advance: () => g.advance(sid), pause: () => g.pause(sid), restart: () => g.restart(sid),
+    chat: () => g.say(sid, p.text), emote: () => g.emote(sid, p.k), profile: () => g.setProfile(sid, p), advance: () => g.advance(sid), pause: () => g.pause(sid), restart: () => g.restart(sid),
   };
   return (map[ev] ? map[ev]() : { ok: false }) || { ok: true };
 }
