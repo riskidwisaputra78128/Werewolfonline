@@ -227,7 +227,7 @@ export class FX {
     // bara api naik + debu sihir
     const mk = (n, rgb, size) => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 3), 3)); const p = new THREE.Points(g, new THREE.PointsMaterial({ map: glow(rgb), size, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })); p.frustumCulled = false; this.scene.add(p); return p; };
     this.embers = mk(70, '255,150,60', 0.14); this.emberD = Array.from({ length: 70 }, () => ({ life: Math.random(), a: Math.random() * 6.3, r: Math.random() * 0.5, s: 0.25 + Math.random() * 0.4, w: 1 + Math.random() * 2 }));
-    this.motes = mk(160, '255,60,50', 0.12); this.moteD = Array.from({ length: 160 }, () => ({ a: Math.random() * 6.3, d: 3 + Math.random() * 26, y: 0.3 + Math.random() * 4, ph: Math.random() * 10 }));
+    this.motes = mk(160, '255,60,50', 0.12); this.moteD = Array.from({ length: 160 }, () => { const a = Math.random() * 6.3, d = 3 + Math.random() * 26; return { a, d, y: 0.3 + Math.random() * 4, ph: Math.random() * 10, gy: heightAt(Math.cos(a) * d, Math.sin(a) * d) }; });
     this.heightAt = heightAt;
   }
   ambienceUpdate(dt, t, night) {
@@ -246,7 +246,7 @@ export class FX {
     this.emberD.forEach((d, i) => { d.life += dt * d.s; if (d.life > 1) { d.life = 0; d.a = Math.random() * 6.3; d.r = Math.random() * 0.5; } const y = d.life * 6; ep.setXYZ(i, Math.cos(d.a + y * d.w) * (d.r + y * 0.12), fy + 0.4 + y, Math.sin(d.a + y * d.w) * (d.r + y * 0.12)); });
     ep.needsUpdate = true; this.embers.material.opacity = 0.9;
     const mp = this.motes.geometry.attributes.position;
-    this.moteD.forEach((d, i) => { const a = d.a + t * 0.02; mp.setXYZ(i, Math.cos(a) * d.d + Math.sin(t * 0.4 + d.ph) * 0.6, this.heightAt(Math.cos(a) * d.d, Math.sin(a) * d.d) + d.y + Math.sin(t * 0.8 + d.ph) * 0.35, Math.sin(a) * d.d); });
+    this.moteD.forEach((d, i) => { const a = d.a + t * 0.02; mp.setXYZ(i, Math.cos(a) * d.d + Math.sin(t * 0.4 + d.ph) * 0.6, d.gy + d.y + Math.sin(t * 0.8 + d.ph) * 0.35, Math.sin(a) * d.d); }); // tinggi tanah sudah dihitung sekali (hemat CPU)
     mp.needsUpdate = true; this.motes.material.opacity = 0.15 + night * 0.75;
   }
 
@@ -465,10 +465,12 @@ export class FX {
       this.podiumOn = true; this.podiumT = 0;
       const top = this.spots[0].clone();
       // konfeti emas & merah + bara naik
-      this.confetti = this.add(new Timed((t) => {
+      let acc = 0;
+      this.confetti = this.add(new Timed((t, dt) => {
         if (!this.podiumOn) return false;
-        if (Math.random() < 0.6) this.burst({ at: top.clone().add(new THREE.Vector3((Math.random() - 0.5) * 5, 4.5, (Math.random() - 0.5) * 2)), n: 14, rgb: Math.random() < 0.5 ? '255,210,110' : '255,70,60', size: 0.16, speed: 0.6, up: -0.4, gravity: -0.8, life: 3, spread: 0.8, drag: 0.4 });
-        if (Math.random() < 0.25) this.burst({ at: top.clone().setY(top.y - 1.4), n: 10, rgb: '255,190,90', size: 0.2, speed: 0.4, up: 2, gravity: 0.2, life: 2, spread: 1.6, radius: 2 });
+        acc += dt; if (acc < 0.15) return true; acc = 0; // ±6 semburan/detik, tidak bergantung FPS
+        if (Math.random() < 0.8) this.burst({ at: top.clone().add(new THREE.Vector3((Math.random() - 0.5) * 5, 4.5, (Math.random() - 0.5) * 2)), n: 14, rgb: Math.random() < 0.5 ? '255,210,110' : '255,70,60', size: 0.16, speed: 0.6, up: -0.4, gravity: -0.8, life: 3, spread: 0.8, drag: 0.4 });
+        if (Math.random() < 0.35) this.burst({ at: top.clone().setY(top.y - 1.4), n: 10, rgb: '255,190,90', size: 0.2, speed: 0.4, up: 2, gravity: 0.2, life: 2, spread: 1.6, radius: 2 });
         return true;
       }));
       this.burst({ at: top.clone().setY(top.y + 0.5), n: 120, rgb: '255,210,120', size: 0.3, speed: 5, up: 1.2, gravity: -3, life: 2, spread: 1.4 });

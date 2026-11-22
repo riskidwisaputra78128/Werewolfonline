@@ -52,15 +52,18 @@ function glowTex() {
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return (ringTexCache.g = t);
 }
 
-const _q = new THREE.Quaternion(), _v = new THREE.Vector3(), _pq = new THREE.Quaternion();
-/** putar tulang mengelilingi sumbu yang dinyatakan di ruang karakter (root) */
+const _q = new THREE.Quaternion(), _v = new THREE.Vector3(), _pq = new THREE.Quaternion(), _rq = new THREE.Quaternion();
+/**
+ * putar tulang mengelilingi sumbu yang dinyatakan di ruang karakter (root).
+ * Hemat: tanpa objek baru per panggilan & tanpa menghitung ulang seluruh kerangka di bawahnya
+ * (getWorldQuaternion sudah memperbarui rantai induk yang dibutuhkan).
+ */
 function turn(bone, root, axis, angle) {
   if (!bone || !angle) return;
   bone.parent.getWorldQuaternion(_pq);
   root.getWorldQuaternion(_q);
   _v.copy(axis).applyQuaternion(_q).applyQuaternion(_pq.invert()).normalize();
-  bone.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(_v, angle));
-  bone.updateMatrixWorld(true);
+  bone.quaternion.premultiply(_rq.setFromAxisAngle(_v, angle));
 }
 // koreksi pose lengan model pria (hasil pengukuran arah tulang): lengan lurus ke bawah, siku sedikit menekuk ke depan
 const MAN_ARM = { armZ: -0.6, armX: -0.15, foreZ: 0, foreY: 0, foreX: 0.22 };

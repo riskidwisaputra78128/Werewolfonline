@@ -74,7 +74,13 @@ export class Village {
     canvas.addEventListener('pointerdown', (e) => (down = [e.clientX, e.clientY]));
     canvas.addEventListener('pointerup', (e) => { if (down && Math.hypot(e.clientX - down[0], e.clientY - down[1]) < 6) this.pick(e); down = null; });
     canvas.addEventListener('pointermove', (e) => this.hover(e));
-    r.setAnimationLoop(() => this.loop());
+    // batas 60 FPS (layar 90/120 Hz tidak perlu dirender 120×/detik → perangkat tidak cepat panas)
+    this._lastFrame = 0; this.frameN = 0;
+    r.setAnimationLoop((now) => { if (now - this._lastFrame < 1000 / 60 - 2) return; this._lastFrame = now; this.loop(); });
+    // bayangan diperbarui tiap 3 frame saja (matahari & karakter bergerak pelan)
+    r.shadowMap.autoUpdate = false; r.shadowMap.needsUpdate = true;
+    this.quality = 0; this.qWin = { sum: 0, n: 0, t: 0 }; this.qUpT = 0; this.baseDpr = r.getPixelRatio();
+    if (/[?&]fps\b/.test(location.search)) { this.fpsEl = document.createElement('div'); this.fpsEl.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:50;font:12px monospace;color:#9f9;background:rgba(0,0,0,.6);padding:4px 8px;border-radius:6px;pointer-events:none'; document.body.appendChild(this.fpsEl); }
   }
 
   resize() {
@@ -456,8 +462,30 @@ export class Village {
     this.renderer.domElement.style.cursor = this.hoverId && this.deco?.[this.hoverId]?.selectable ? 'pointer' : 'grab';
   }
 
+  /** Turunkan/naikkan kualitas grafis otomatis berdasarkan FPS rata-rata */
+  autoQuality(rawDt) {
+    const w = this.qWin; w.sum += rawDt; w.n++; w.t += rawDt;
+    if (w.t < 3) return;
+    const fps = w.n / w.sum; w.sum = 0; w.n = 0; w.t = 0; this.qUpT += 3;
+    if (this.fpsEl) this.fpsEl.textContent = `${fps.toFixed(0)} FPS · kualitas ${['tinggi', 'sedang', 'rendah', 'hemat'][this.quality]} · ${this.renderer.info.render.calls} draw`;
+    if (fps < 40 && this.quality < 3) { this.setQuality(this.quality + 1); this.qUpT = 0; }
+    else if (fps > 57 && this.quality > 0 && this.qUpT >= 30) { this.setQuality(this.quality - 1); this.qUpT = 0; }
+  }
+  setQuality(q) {
+    this.quality = q; const r = this.renderer;
+    r.setPixelRatio(Math.max(0.75, Math.min(this.baseDpr, [this.baseDpr, 1.25, 1, 0.85][q])));
+    r.setSize(innerWidth, innerHeight, false); this.composer?.setSize(innerWidth, innerHeight);
+    this.bloom.enabled = q < 2 && !this.low;
+    this.sun.shadow.mapSize.set(q >= 2 ? 1024 : 2048, q >= 2 ? 1024 : 2048); this.sun.shadow.map?.dispose(); this.sun.shadow.map = null;
+    if (this.grass) this.grass.visible = q < 3;
+    if (this.fx.motes) this.fx.motes.visible = q < 3;
+    this.fx.fog?.forEach((f) => (f.visible = q < 3 && !this.indoor));
+    this.shadowEvery = q >= 2 ? 6 : 3;
+  }
   loop() {
-    const dt = Math.min(0.05, this.clock.getDelta()), t = this.clock.elapsedTime;
+    const raw = this.clock.getDelta(), dt = Math.min(0.05, raw), t = this.clock.elapsedTime;
+    this.autoQuality(raw);
+    if ((this.frameN = (this.frameN + 1) % (this.shadowEvery || 3)) === 0 || this.deathQueue.length || this.cine) this.renderer.shadowMap.needsUpdate = true;
     this.uTime.value = t;
     this.applyTime(dt);
     this.camera.position.sub(this.shakeOff);
