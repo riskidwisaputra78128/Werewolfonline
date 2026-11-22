@@ -1,5 +1,6 @@
 import { Village, EMO_ICON, EMO_LABEL } from './village.js';
 import { auth } from './auth.js';
+import { Voice } from './voice.js';
 import { VARIANTS } from './outfits.js';
 import { OnlineTransport, OfflineTransport, P2PTransport } from './transport.js';
 import { FirebaseTransport, hasFirebase, watchRooms } from './fbtransport.js';
@@ -27,8 +28,14 @@ addEventListener('pointerdown', () => audio.init(), { once: true });
 auth.load();
 const village = new Village($('scene'), { onPick: (id) => pickHandler?.(id), low: matchMedia('(max-width:700px)').matches || location.search.includes('low') });
 village.controls.autoRotate = true;
-window.__ww = { village, get game() { return T?.game; } };
-village.weather.onThunder = (d) => audio.thunder(d); // untuk debug di konsol
+window.__ww = { village, get game() { return T?.game; }, get voice() { return voice; } };
+village.weather.onThunder = (d) => audio.thunder(d);
+const voice = new Voice({
+  onSpeaking: (s) => { village.speaking = s; },
+  onTranscript: (t) => { if (T && V?.chatChannel) T.call('chat', { text: '🎙 ' + t }); },
+  onState: (st) => renderMic(st),
+});
+village.speaking = voice.speaking; // untuk debug di konsol
 
 let net = null, offline = new OfflineTransport(), T = null, stopRoomWatch = null;
 let V = null, offset = 0, pickHandler = null, lastLogT = 0, lastChatN = 0, unread = 0, lastPhase = '', revealShown = '', endShown = false;
@@ -146,6 +153,7 @@ function backToLobby(msg) {
   lobbyMsg(msg || '');
   if (!GAS) { try { history.replaceState(null, '', location.pathname + location.search.replace(/[?&]room=[A-Z0-9]+/i, '')); } catch { /* */ } }
   if (MODE === 'static') setStatus('online');
+  voice.leave(); voice.stopTalk();
   refreshRooms(); $('emobar').classList.add('hidden'); audio.setWeather('cerah'); village.weather.set('cerah'); renderAcct(); loadLb();
 }
 // peringatan untuk host P2P saat menutup tab
@@ -173,6 +181,7 @@ function onState(v) {
   village.setTheme(v.settings?.theme || 'kampung');
   village.weather.set(v.weather); audio.setTheme(v.settings?.theme || 'kampung'); audio.setWeather(village.indoor ? 'cerah' : v.weather); audio.setNight(v.phase === 'night' || (v.phase === 'end' && v.winner === 'wolf') ? 1 : 0);
   if (v.phase === 'end') reportResult();
+  voice.update(v, T === offline ? 'OFFLINE' : v.code, T !== offline && T === net);
   village.setPodium(v.phase === 'end' && v.podium ? v.podium.filter((r) => r.winner).slice(0, 3).map((r) => r.id) : []);
   village.sync(v.players, { reveal: v.phase === 'end' });
   if (TIME[v.phase] != null) village.setTimeOfDay(v.phase === 'end' && v.winner === 'wolf' ? 0.95 : TIME[v.phase]);
@@ -181,6 +190,7 @@ function onState(v) {
   if (fresh.length) {
     lastLogT = fresh.at(-1).t;
     const deathIds = [];
+    if (!first) for (const e of fresh) if (['phase', 'death', 'win'].includes(e.kind)) voice.say(e.text, { narrator: true });
     for (const e of fresh) {
       if (e.kind === 'death' && e.who && village.avatars.has(e.who)) { deathLog.set(e.who, e); deathIds.push(e.who); }
       else queueBanner(e.text, e.kind);
@@ -194,6 +204,7 @@ function onState(v) {
   // chat baru
   for (const m of v.chat) if (m.n > lastChatN) {
     if (!m.sys && m.channel === 'all') village.bubble(m.id, m.text);
+    if (!m.sys && m.id !== v.you && v.players.find((p) => p.id === m.id)?.isBot) voice.say(m.text, { id: m.id });
     if ($('chat').classList.contains('hidden') && !m.sys) unread++;
   }
   lastChatN = v.chat.at(-1)?.n || lastChatN;
@@ -738,3 +749,28 @@ $('rpPlay').onclick = () => {
   clearInterval(rpTimer); let i = 0; const n = V?.timeline?.length || 0; renderReplay(0);
   rpTimer = setInterval(() => { i++; renderReplay(i); audio.tone(520 + (i % 5) * 80, 0.12, 'triangle', 0.05); if (i >= n) clearInterval(rpTimer); }, 900);
 };
+
+
+// ================= SUARA: MIC · BOT BICARA · UCAPAN→TEKS =================
+function renderMic(st) {
+  const b = $('tMic'); b.classList.remove('live', 'muted', 'on');
+  const map = { off: ['🎙', ' Mic', 'Nyalakan obrolan suara'], connecting: ['⏳', ' Mic', 'Menyambungkan suara…'], on: ['🎙', ' Mic nyala', 'Mic nyala — klik untuk bisu'], muted: ['🔇', ' Bisu', 'Mic bisu (tetap mendengar) — klik untuk bicara'], nomic: ['🔇', ' Dengar saja', 'Izin mic ditolak — hanya mendengar'], error: ['⚠', ' Mic', 'Suara gagal tersambung, coba lagi'] };
+  const [ic, lb, title] = map[st] || map.off;
+  b.innerHTML = `${ic}<span class="lbl">${lb}</span>`; b.title = title;
+  if (st === 'on') b.classList.add('live'); if (st === 'muted' || st === 'nomic') b.classList.add('muted');
+  if (st === 'nomic') banner('Izin mikrofon ditolak. Kamu tetap bisa mendengar pemain lain. Izinkan mic lewat ikon 🔒 di address bar.', 'info');
+  if (st === 'error') { banner('Obrolan suara gagal tersambung. Cek koneksi lalu tekan 🎙 lagi.', 'info'); voice.leave(); }
+}
+$('tMic').onclick = () => {
+  if (!voice.supported) return banner('Browser ini tidak mendukung mikrofon.', 'info');
+  audio.init(); voice.toggle();
+  if (voice.state === 'off' && T === offline) banner('Mode latihan: ucapanmu diubah jadi teks supaya bot bisa membalas.', 'info');
+};
+let lastMicLong = 0;
+$('tMic').oncontextmenu = (e) => { e.preventDefault(); if (voice.state !== 'off') { voice.leave(); banner('Keluar dari obrolan suara.', 'info'); } };
+const renderTalk = () => { $('tTalk').classList.toggle('on', voice.ttsOn); $('tTalk').title = voice.ttsOn ? 'Bot & narator bicara: nyala' : 'Bot & narator bicara: mati'; };
+renderTalk();
+$('tTalk').onclick = () => { voice.setTts(!voice.ttsOn); renderTalk(); if (voice.ttsOn) voice.say('Suara bot dinyalakan.', { narrator: true }); };
+$('ckStt').checked = voice.sttOn; $('ckStt').disabled = !voice.sttSupported;
+if (!voice.sttSupported) $('ckStt').parentElement.title = 'Browser ini belum mendukung ucapan→teks (pakai Chrome/Edge)';
+$('ckStt').onchange = () => voice.setStt($('ckStt').checked);

@@ -27,6 +27,10 @@ canvas#scene{position:fixed;inset:0;width:100%;height:100%;display:block;touch-a
 .bubble{background:#f3e6c8;color:#2a1608;border:1px solid #b88a3e;border-radius:10px;padding:5px 10px;font-size:13px;font-weight:700;max-width:220px;white-space:normal;text-align:center;position:relative;animation:pop .2s;box-shadow:0 6px 18px rgba(0,0,0,.5)}
 .bubble:after{content:"";position:absolute;left:50%;bottom:-6px;margin-left:-6px;border:6px solid transparent;border-top-color:#f3e6c8;border-bottom:0}
 @keyframes pop{from{transform:scale(.7);opacity:0}}
+.spk{display:inline-block;margin-right:4px;animation:spk .5s ease-in-out infinite alternate}@keyframes spk{to{transform:scale(1.25)}}
+.tools button.live{background:linear-gradient(180deg,#2fbf71,#13703f);border-color:#9effc6;color:#fff;box-shadow:0 0 16px rgba(47,191,113,.5)}
+.tools button.muted{background:linear-gradient(180deg,#6b5a3a,#3a2e18);border-color:#d8b06a}
+.stt-ck{font:600 12px "Nunito Sans";margin-left:8px;display:inline-flex;gap:4px;align-items:center;color:var(--dim)}
 .emo{font-size:30px;line-height:1;filter:drop-shadow(0 3px 6px rgba(0,0,0,.6));animation:emoPop .35s cubic-bezier(.2,1.6,.4,1),emoFloat 1.6s ease-in-out .35s infinite}
 @keyframes emoPop{from{transform:scale(.2) translateY(10px);opacity:0}}@keyframes emoFloat{50%{transform:translateY(-5px)}}
 .emobar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--dockH,120px) + 14px);display:flex;gap:6px;padding:8px;background:var(--glass2);border:1px solid var(--line2);border-radius:14px;z-index:6;box-shadow:0 10px 30px rgba(0,0,0,.5);flex-wrap:wrap;justify-content:center;max-width:calc(100vw - 20px)}
@@ -310,6 +314,8 @@ hr{border:0;border-top:1px solid var(--line);margin:2px 0}
     </div>
     <div class="tools">
       <button id="tEmote" title="Emote cepat">😀<span class="lbl"> Emote</span></button>
+      <button id="tMic" title="Obrolan suara (mic)">🎙<span class="lbl"> Mic</span></button>
+      <button id="tTalk" title="Bot &amp; narator bicara">🗣<span class="lbl"> Suara bot</span></button>
       <button id="tSound" title="Musik on/off">🎵<span class="lbl"> Musik</span></button>
       <button id="tFs" title="Layar penuh">⛶<span class="lbl"> FS</span></button>
       <button id="tCard">🃏<span class="lbl"> Card</span></button>
@@ -325,7 +331,7 @@ hr{border:0;border-top:1px solid var(--line);margin:2px 0}
     <div class="scroll" id="wargaBody"></div>
   </div>
   <div class="side card hidden" id="chat">
-    <h3>💬 Chat <span class="muted" id="chatMode" style="font-size:12.5px;font-family:'Nunito Sans'"></span><button class="x" data-close="chat" aria-label="Tutup">✕</button></h3>
+    <h3>💬 Chat <span class="muted" id="chatMode" style="font-size:12.5px;font-family:'Nunito Sans'"></span><label class="ck stt-ck" title="Ucapan di mic otomatis jadi teks supaya bot ikut paham"><input type="checkbox" id="ckStt" /> 🎙→teks</label><button class="x" data-close="chat" aria-label="Tutup">✕</button></h3>
     <div id="chatLog"></div>
     <form class="row" id="chatForm"><input id="chatIn" class="grow" maxlength="240" autocomplete="off" /><button class="b-cyan">Kirim</button></form>
   </div>

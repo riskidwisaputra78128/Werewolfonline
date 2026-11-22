@@ -27,9 +27,10 @@ export class Audio {
       this.rainGain = this.ctx.createGain(); this.rainGain.gain.value = 0;
       rs.connect(rf).connect(this.rainGain).connect(this.master); rs.start();
       // musik
-      this.musicBus = this.ctx.createGain(); this.musicBus.gain.value = this.musicOn ? 0.5 : 0;
-      const verb = this.ctx.createDelay(1); verb.delayTime.value = 0.32; const fb = this.ctx.createGain(); fb.gain.value = 0.33; const wet = this.ctx.createGain(); wet.gain.value = 0.35;
-      this.musicBus.connect(this.master); this.musicBus.connect(verb); verb.connect(fb).connect(verb); verb.connect(wet).connect(this.master);
+      this.musicBus = this.ctx.createGain(); this.musicBus.gain.value = this.musicOn ? 0.35 : 0;
+      const verb = this.ctx.createDelay(1); verb.delayTime.value = 0.42; const fb = this.ctx.createGain(); fb.gain.value = 0.4; const wet = this.ctx.createGain(); wet.gain.value = 0.3;
+      const soft = this.ctx.createBiquadFilter(); soft.type = 'lowpass'; soft.frequency.value = 2200; fb.connect(soft);
+      this.musicBus.connect(this.master); this.musicBus.connect(verb); verb.connect(fb); soft.connect(verb); verb.connect(wet).connect(this.master);
       this.step = 0; this.nextT = this.ctx.currentTime + 0.5;
       this.musicTimer = setInterval(() => this.schedule(), 120);
     } catch { this.ctx = null; }
@@ -56,7 +57,7 @@ export class Audio {
     const g = this.ctx.createGain(); g.gain.setValueAtTime(0.001, t); g.gain.linearRampToValueAtTime(0.7 / dist, t + 0.06); g.gain.exponentialRampToValueAtTime(0.001, t + 3.2);
     s.connect(f).connect(g).connect(this.master); s.start(t); s.stop(t + 3.3);
   }
-  setMusic(on) { this.musicOn = on; if (this.musicBus) this.musicBus.gain.setTargetAtTime(on ? 0.5 : 0, this.ctx.currentTime, 0.4); }
+  setMusic(on) { this.musicOn = on; if (this.musicBus) this.musicBus.gain.setTargetAtTime(on ? 0.35 : 0, this.ctx.currentTime, 0.4); }
   note(freq, t, dur, type, vol, attack = 0.01) {
     const o = this.ctx.createOscillator(), g = this.ctx.createGain();
     o.type = type; o.frequency.setValueAtTime(freq, t);
@@ -72,9 +73,13 @@ export class Audio {
       const deg = pat[i % pat.length] + (S.prog[bar] || 0);
       if (pat[i % pat.length] !== null && Math.random() > S.rest) {
         const f = root * Math.pow(2, (scale[((deg % scale.length) + scale.length) % scale.length] + 12 * Math.floor(deg / scale.length)) / 12);
-        this.note(f * 2, t, S.len, S.lead, S.vol);
+        this.note(f * (night ? 1 : 2), t, S.len, S.lead, S.vol, 0.04);
       }
-      if (i % 8 === 0) this.note(root * Math.pow(2, (scale[(S.prog[bar] || 0) % scale.length]) / 12) / 2, t, beat * 7, S.bass, S.vol * 0.9, 0.08);
+      if (i % 8 === 0) {
+        const deg0 = S.prog[bar] || 0, f0 = (d) => root * Math.pow(2, (scale[(d % scale.length + scale.length) % scale.length] + 12 * Math.floor(d / scale.length)) / 12);
+        this.note(f0(deg0) / 2, t, beat * 8, S.bass, S.vol * 0.8, 0.4);
+        if (S.pad) [0, 2, 4].forEach((k) => this.note(f0(deg0 + k), t, beat * 8.5, 'sine', S.vol * 0.35, beat * 2)); // pad lembut, masuk perlahan
+      }
       if (S.perc && i % 2 === 0 && !night) this.tick(t, i % 4 === 0 ? 0.05 : 0.025);
       this.nextT += beat;
     }
@@ -124,8 +129,9 @@ export class Audio {
 
 // skala: semitone dari root. pelog/slendro ala gamelan untuk kampung & pasar
 const MUSIC = {
-  kampung: { bpm: 84, root: 196, day: [0, 2, 4, 7, 9], night: [0, 1, 5, 7, 8], pattern: [0, 2, 4, 2, 5, 4, 2, null], prog: [0, 2, 3, 1], lead: 'triangle', bass: 'sine', vol: 0.05, len: 0.9, rest: 0.15, perc: false },
-  pasar: { bpm: 112, root: 220, day: [0, 2, 4, 7, 9], night: [0, 1, 5, 7, 8], pattern: [0, 4, 2, 4, 5, 4, 7, 4], prog: [0, 3, 1, 4], lead: 'square', bass: 'triangle', vol: 0.028, len: 0.35, rest: 0.1, perc: true },
-  modern: { bpm: 92, root: 174.6, day: [0, 2, 4, 7, 11], night: [0, 3, 5, 7, 10], pattern: [0, null, 4, null, 2, 5, null, 4], prog: [0, 3, 4, 2], lead: 'sine', bass: 'sine', vol: 0.06, len: 1.4, rest: 0.25, perc: false },
-  kantor: { bpm: 76, root: 164.8, day: [0, 3, 5, 7, 10], night: [0, 1, 3, 7, 8], pattern: [0, 2, null, 4, 3, null, 2, null], prog: [0, 2, 4, 3], lead: 'triangle', bass: 'sine', vol: 0.05, len: 0.7, rest: 0.2, perc: true },
+  // santai: tempo pelan, nada lembut (sine/triangle), banyak jeda, pad akor panjang, tanpa perkusi
+  kampung: { bpm: 62, root: 196, day: [0, 2, 4, 7, 9], night: [0, 2, 3, 7, 9], pattern: [0, null, 2, null, 4, null, 2, null], prog: [0, 3, 4, 2], lead: 'sine', bass: 'sine', vol: 0.035, len: 1.8, rest: 0.35, perc: false, pad: true },
+  pasar: { bpm: 70, root: 220, day: [0, 2, 4, 7, 9], night: [0, 2, 3, 7, 9], pattern: [0, null, 4, 2, null, 4, null, null], prog: [0, 3, 1, 4], lead: 'triangle', bass: 'sine', vol: 0.03, len: 1.4, rest: 0.3, perc: false, pad: true },
+  modern: { bpm: 58, root: 174.6, day: [0, 2, 4, 7, 11], night: [0, 2, 3, 7, 10], pattern: [0, null, null, 4, null, 2, null, null], prog: [0, 3, 4, 2], lead: 'sine', bass: 'sine', vol: 0.04, len: 2.4, rest: 0.3, perc: false, pad: true },
+  kantor: { bpm: 64, root: 164.8, day: [0, 3, 5, 7, 10], night: [0, 3, 5, 7, 10], pattern: [0, null, 2, null, null, 4, 3, null], prog: [0, 2, 4, 3], lead: 'triangle', bass: 'sine', vol: 0.032, len: 1.6, rest: 0.3, perc: false, pad: true },
 };

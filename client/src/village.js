@@ -596,7 +596,7 @@ export class Village {
       if (!off) {
         a.label.style.transform = `translate(-50%,-100%) translate(${(v.x * 0.5 + 0.5) * W}px,${(-v.y * 0.5 + 0.5) * H}px)`;
         if (a.bubbleT > 0) a.bubbleT -= dt;
-        const html = `${a.emoUntil > performance.now() ? `<div class="emo" data-k="${a.emo}">${EMO_ICON[a.emo] || '❔'}</div>` : ''}${a.bubbleT > 0 ? `<div class="bubble">${esc(a.bubble)}</div>` : ''}<div class="pname ${p.alive ? '' : 'dead'} ${deco.you ? 'you' : ''}" style="--c:${p.color}">${deco.role ? `<span class="ri">${deco.role}</span>` : ''}${esc(p.name)}${p.connected ? '' : ' <span class="off">⚠</span>'}${deco.badge ? `<span class="badge">${deco.badge}</span>` : ''}</div>`;
+        const html = `${a.emoUntil > performance.now() ? `<div class="emo" data-k="${a.emo}">${EMO_ICON[a.emo] || '❔'}</div>` : ''}${a.bubbleT > 0 ? `<div class="bubble">${esc(a.bubble)}</div>` : ''}<div class="pname ${p.alive ? '' : 'dead'} ${deco.you ? 'you' : ''}" style="--c:${p.color}">${deco.role ? `<span class="ri">${deco.role}</span>` : ''}${this.speaking?.has(id) ? '<span class="spk">🔊</span>' : ''}${esc(p.name)}${p.connected ? '' : ' <span class="off">⚠</span>'}${deco.badge ? `<span class="badge">${deco.badge}</span>` : ''}</div>`;
         if (html !== a.lastHtml) { a.label.innerHTML = html; a.lastHtml = html; }
       }
     }
