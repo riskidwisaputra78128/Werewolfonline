@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Rumah CV · Perjalanan Hidup</title>
+  <meta name="description" content="CV interaktif 3D — masuki rumahnya dan jelajahi perjalanan hidup saya." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏡</text></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+  <script type="importmap">
+    { "imports": { "three": "./vendor/three/three.module.js", "three/addons/": "./vendor/three/addons/" } }
+  </script>
+</head>
+<body>
+  <canvas id="world"></canvas>
+  <div id="vignette"></div>
+
+  <!-- Layar loading -->
+  <div id="loader">
+    <div class="loader-house">🏡</div>
+    <div class="loader-stars"><span>✦</span><span>✦</span><span>✦</span></div>
+    <p>Membangun rumah…</p>
+  </div>
+
+  <!-- Transisi cahaya -->
+  <div id="fade"></div>
+
+  <!-- HUD -->
+  <header id="hud">
+    <div class="brand"><span class="brand-icon">🏡</span><span id="brandName">Rumah Saya</span></div>
+    <div class="hud-actions">
+      <button id="btnExit" class="pill hidden" title="Keluar rumah">🚪 Keluar</button>
+    </div>
+  </header>
+
+  <!-- Intro luar rumah -->
+  <section id="intro" class="hidden">
+    <p class="eyebrow">✦ CV interaktif ✦</p>
+    <h1 id="introName">Rumah Saya</h1>
+    <p id="introTitle" class="sub"></p>
+    <button id="btnEnter" class="cta">Ketuk pintu &amp; masuk <span>→</span></button>
+    <p class="hint">atau klik pintunya langsung · seret untuk memutar</p>
+  </section>
+
+  <div id="tooltip" class="hidden"></div>
+
+  <!-- Navigasi di dalam rumah -->
+  <nav id="dock" class="hidden"></nav>
+  <p id="insideHint" class="hidden">Klik bingkai di dinding · seret untuk melihat sekeliling</p>
+
+  <!-- Panel isi CV -->
+  <div id="panelWrap" class="hidden">
+    <article id="panel">
+      <button id="panelClose" class="close" aria-label="Tutup">✕</button>
+      <div id="panelBody"></div>
+    </article>
+  </div>
+
+  <!-- Tema profesional (tanpa 3D) -->
+  <div id="proRoot" class="hidden"></div>
+
+  <a id="adminLink" href="admin.html" title="Admin">🔒</a>
+  <div id="noWebgl" class="hidden">Browser kamu belum mendukung WebGL. Coba buka di Chrome/Edge terbaru.</div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

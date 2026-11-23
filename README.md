@@ -1,89 +1,152 @@
+# 🏡 Rumah CV — CV Interaktif 3D
+
+Pengunjung disambut sebuah **rumah pondok bergaya semi-realistis di padang rumput saat matahari terbit**: langit & cahaya dari foto HDRI asli, material PBR (plester, batu alam, genteng, kayu, bata), bayangan lembut, rumput & pohon yang bergoyang tertiup angin, dan asap cerobong.
+Klik pintu → pintu terbuka, cahaya membanjir, kamera terbang masuk → di dalam ada **ruang galeri** dengan bingkai-bingkai di dinding.
+Klik bingkai → kamera mendekat & panel CV muncul (Tentang, Pengalaman, Keahlian, Pendidikan, Sertifikasi, Proyek, Galeri, Kontak).
+
+- **Pembaca CV** → cukup buka website, tanpa login.
+- **Admin** → buka `/admin` (ikon 🔒 kecil di pojok kanan bawah), login, lalu edit profil, foto, isi tiap bingkai, link, dan dokumen.
+
+Tanpa build step: HTML + JavaScript biasa, Three.js sudah ada di folder `vendor/`. Hosting gratis di **Vercel**, data di **Firebase** (paket Spark, tanpa kartu kredit).
+
 ---
-title: Werewolf Online
-emoji: 🐺
-colorFrom: red
-colorTo: indigo
-sdk: docker
-app_port: 7860
-pinned: false
----
 
-# 🐺 Werewolf Online — Desa 3D Multiplayer
+## Tema tampilan (pilih di Admin → 🎨 Tampilan)
 
-Game social deduction Werewolf yang dimainkan bareng teman di browser: buat room, bagikan kode atau link, lalu main realtime di desa 3D dengan siklus siang–malam.
-
-## Pilih cara deploy
-
-| Cara | Butuh server/kartu? | File yang dipakai |
+| Tema | Isi | Beban |
 |---|---|---|
-| **Netlify** | Tidak | `deploy/web/index.html` (atau seluruh repo + `netlify.toml`) |
-| **Vercel** | Tidak | seluruh repo + `vercel.json` |
-| **GitHub Pages** | Tidak | `deploy/web/index.html` |
-| **Google Apps Script** | Tidak | `deploy/apps-script/Code.gs` + `index.html` |
-| Render / Railway / VPS (versi server) | Ya (Node.js) | seluruh repo + `render.yaml` / `Dockerfile` |
+| 🏰 Disney 3D | rumah dongeng kartun di pulau melayang | sedang |
+| 🏡 Semi-realistis 3D | pondok PBR, langit HDRI, rumput & pohon bergoyang | berat |
+| 💼 Profesional | website portofolio modern tanpa 3D | ringan |
+| 📷 Realistis foto asli | foto rumah asli + foto 360° ruangan asli (upload di Admin) | ringan |
+| 🌉 Kota Palembang | rumah limas di tepi Musi, Jembatan Ampera, perahu ketek | sedang |
 
-Versi **tanpa server** (Netlify/Vercel/Pages/Apps Script) memakai **P2P (WebRTC via PeerJS)**: browser host menjalankan game, pemain lain tersambung langsung ke host. Hal yang perlu diketahui:
-- Host harus membiarkan tab game terbuka selama permainan. Kalau host menutup tab, room berakhir. Sebaiknya host bermain dari laptop.
-- Versi P2P (tanpa Firebase) tidak punya daftar room publik — gabung lewat **kode room** atau **link undangan**.
-- Versi **Firebase** menampilkan **daftar room aktif** di halaman awal: pemain tinggal sentuh *Gabung*, tanpa kode. Room otomatis hilang dari daftar saat host keluar/menutup tab, dan sisa room yatim dibersihkan sendiri. Host bisa mematikan *Tampilkan di daftar* untuk room privat.
+Coba tema tanpa menyimpan: tambahkan `?theme=disney` / `real` / `pro` / `photo` / `palembang` di URL.
+Semua tema 3D otomatis menurunkan resolusi bila FPS turun, dan perangkat tanpa WebGL otomatis memakai tema Profesional.
 
-### Rules Firebase Realtime Database
-Daftar room dibaca dari `meta` tiap room di `ww/rooms`, jadi cukup rules yang mengizinkan baca/tulis `ww/rooms` (tidak perlu rules tambahan).
-- Pada jaringan yang sangat ketat (sebagian WiFi kantor), koneksi bisa gagal. Coba jaringan lain atau hotspot HP.
+**Tema foto asli:** di Admin → Tampilan, upload foto depan rumah, lalu klik tepat di pintunya. Untuk ruangan, upload foto 360° (rasio 2:1) dari mode *Panorama/Photo Sphere* HP atau kamera 360. Foto contoh bawaan adalah render 3D.
 
-### Netlify (paling mudah)
-1. Buka **app.netlify.com/drop**.
-2. Seret folder `deploy/web` ke halaman itu. Link langsung jadi.
-   *Atau:* Add new site → Import from GitHub → pilih repo. `netlify.toml` sudah mengatur semuanya, jadi tinggal klik Deploy.
+## Fitur tiap bingkai
 
-### Vercel
-1. Buka **vercel.com/new** dan login dengan GitHub.
-2. Import repo `Werewolf-online`, lalu klik **Deploy**. Pengaturan sudah ada di `vercel.json`, jangan diubah.
+- **Timeline (Pengalaman/Pendidikan):** item bisa dibuka-tutup, poin pencapaian, tombol 📍 Google Maps (isi nama tempat/alamat atau link), link + teks tombolnya.
+- **Grid foto (Proyek/Sertifikat):** yang tampil hanya foto sampul; klik → popup penjelasan, tag, dan link. Filter berdasarkan tag.
+- **Keahlian:** filter per kategori + bar animasi.
+- **Galeri:** lightbox dengan tombol ‹ › / geser, keyboard, dan slideshow.
+- **Kontak:** salin email/nomor, chat WhatsApp, buka Maps, form "Kirim pesan" via WhatsApp/Email, unduh dokumen.
+- **Upload foto di Admin:** editor potong, zoom, putar, pilih ukuran hasil (Kecil/Sedang/Besar), lengkap dengan pratinjau tampilannya.
 
-### Google Apps Script
-1. Buka **script.google.com** → New project.
-2. Ganti isi `Code.gs` dengan isi `deploy/apps-script/Code.gs`.
-3. Klik **+ (Add a file) → HTML**, beri nama `index` (persis, tanpa .html), lalu tempel seluruh isi `deploy/apps-script/index.html`.
-4. **Deploy → New deployment → Web app**, Execute as: *Me*, Who has access: *Anyone* → Deploy. Salin URL `/exec`-nya.
-5. Link undangan di versi ini berbentuk `URL-exec?room=KODE`.
+## 1. Coba dulu di komputer (Mode Demo)
 
-## Fitur
-- Room & lobby, kode room, link undangan, maks 16 pemain.
-- Host = Moderator (opsional): melihat semua peran & aksi malam, lanjut fase, jeda timer, ulang game, keluarkan pemain.
-- Peran: Werewolf, Seer, Doctor, Hunter (sniper tiap malam), Hakim (suara ×2), Guardian, Witcher, Villager. Peran khusus dan jumlah werewolf bisa diatur.
-- Chat umum, chat rahasia serigala, chat arwah, plus gelembung chat di atas avatar.
-- Desa 3D: siang/malam mengikuti fase, klik avatar untuk memilih target, nisan untuk pemain mati, werewolf berubah wujud di akhir.
-- Bot pengisi dan latihan offline vs 7 bot.
-- **Bot Ngobrol** (bisa dimatikan di pengaturan host): bot berdiskusi seperti warga — kaget saat ada korban, menuduh, membela diri, ikut-ikutan curiga, Seer membongkar hasil terawangan, serigala berunding di chat rahasia & bisa mengaku Seer palsu, membalas chat pemain manusia, mengumumkan pilihan voting. Tiap bot punya sifat (santai, curigaan, heboh, pendiam, bijak).
-- **Level bot: Easy / Normal / Hard** — memengaruhi kecerdasan diskusi, voting, dan aksi malam (Hard: Seer menerawang tersangka utama, Doctor/Guardian melindungi Seer yang mengaku, Hunter hanya menembak bila yakin, serigala memburu Seer).
-- **4 tema** (dipilih host saat membuat room / di panel pengaturan lobby, sama untuk semua pemain):
-  - 🌾 **Kampung** — rumah panggung beratap jerami, sawah padi bergoyang, ayam berkeliaran & mematuk, jemuran berkibar, sumur dengan engkol, kincir air, asap dapur, obor.
-  - 🏮 **Pasar Desa** — alun-alun berbatu, lapak beratap kain belang (buah, sayur, ikan, kain, gerabah, roti, sate), untaian bendera & lampion, gerobak, tong, merpati, asap panggangan.
-  - 🏙️ **Desa Modern** — rumah minimalis kaca + panel surya, plaza berubin, jalan aspal melingkar dengan mobil berjalan (lampu menyala malam), lampu jalan, bangku taman, papan nama bercahaya.
-  - 🏢 **Kantor TBR** — ruang kantor (dalam ruangan): dinding gelap dengan panel ornamen bintang + LED hangat, whiteboard, plafon dengan lampu panel & AC, lis lampu kuning di sepanjang plafon, papan nama "TBR" menyala, mural segitiga biru-kuning, meja kerja dengan monitor menyala, kursi kantor, tumbler, tray dokumen oranye. Dilihat dari atas seperti rumah boneka (plafon & dinding depan transparan).
-- **16 warga berbeda dalam 5 golongan**: Orang Tua (kakek beruban, bertongkat, agak bungkuk), Nenek (beruban, rok panjang, tongkat/lentera), Laki-laki Muda, Cewek Muda Stylish, dan Anak-anak. Semua punya animasi bernapas & bergerak saat diam.
-- **Karakter manusia realistis** (2 model GLB ber-rig — pria & wanita — yang diubah menjadi orang tua dan anak-anak) dengan animasi idle, tarian kemenangan di podium, plus aura & kristal warna pemain. File ada di `deploy/web/models/` — ikut ter-upload saat deploy Vercel/Netlify. Versi Apps Script tidak bisa memuat file model, jadi otomatis memakai karakter bawaan.
-- Karakter bawaan (cadangan) bergaya fantasi: jubah berbordir yang berkibar, cape, pauldron, rambut & telinga elf acak, orb sihir, tongkat, kristal melayang, aura warna pemain. Moderator bersayap dengan halo.
-- Tema visual dark fantasy: rune merah menyala, panel bergaya grimoire, kartu peran tome 3D (miring mengikuti kursor) dengan sigil berbeda tiap peran.
-- Efek 3D: lingkaran rune di lapangan desa, bulan darah, kabut tanah, bara api, debu sihir, color grading + vignette, guncangan kamera.
-- Animasi kematian per penyebab: dimangsa serigala (bayangan werewolf menerkam + cakar), eksekusi voting (lingkaran penghakiman + pilar cahaya), racun Witcher (asap hijau), sniper Hunter (laser merah dari kegelapan + peluru pelacak), Guardian berkorban (perisai emas pecah). Kamera otomatis menyorot korban.
-- Akhir game: tim pemenang naik **podium 3D** (peringkat 1–3) dengan konfeti, plus panel **kontribusi** tiap pemain (memangsa, menerawang, menyelamatkan, voting tepat, bertahan hidup, dll.).
+`js/config.js` masih `FIREBASE_CONFIG = null` → **Mode Demo**: data tersimpan di browser saja.
 
-## Pengembangan
 ```bash
-npm install
-npm run build:static   # build versi tanpa server → deploy/web & deploy/apps-script
-npm run build && npm start   # versi server Node.js (Socket.IO) di http://localhost:3000
+cd rumah-cv
+npx serve .          # atau: python -m http.server 8000
 ```
-Uji P2P lokal tanpa internet: jalankan server PeerJS sendiri (`npx peerjs --port 9000`), lalu buka `index.html?peer=localhost:9000`.
+Buka `http://localhost:3000` (atau `:8000`). Halaman admin: `/admin.html`, password demo: **admin123** (ubah di `js/config.js`).
 
-## Struktur
+> Jangan buka `index.html` dengan klik dua kali (file://) — browser memblokir modul JS. Pakai server lokal seperti di atas.
+
+---
+
+## 2. Hubungkan Firebase (agar admin bisa edit dari mana saja)
+
+Kamu bisa memakai **project Firebase yang sama dengan game Werewolf** (Realtime Database sudah aktif) atau buat project baru.
+
+**a. Aktifkan login admin**
+1. Firebase Console → **Authentication** → *Get started* → tab *Sign-in method* → aktifkan **Email/Password**.
+2. Tab *Users* → **Add user** → isi email & password admin kamu.
+3. Authentication → *Settings* → **Authorized domains** → tambahkan domain Vercel kamu nanti (mis. `rumah-risky.vercel.app`).
+
+**b. Aturan database (Rules)**
+Realtime Database → tab **Rules**. ⚠️ Kalau project ini juga dipakai game Werewolf, **jangan timpa** rules yang ada —
+cukup **tambahkan** blok `"rumahcv"` di dalam `"rules"`, di samping rules werewolf yang sudah ada:
+
+```json
+"rumahcv": {
+  "data": {
+    ".read": true,
+    ".write": "auth != null && auth.token.email == 'emailadmin@gmail.com'"
+  }
+}
 ```
-shared/engine.js          Aturan game (dipakai server, host P2P, dan mode offline)
-client/src/transport.js   Online (Socket.IO) · P2P (PeerJS) · Offline (bot)
-client/src/main.js        UI & logika tampilan
-client/src/village.js     Desa 3D & avatar
-server/index.js           Server Node.js (opsional, untuk Render/VPS)
-deploy/web/               File siap upload untuk Netlify/Vercel/GitHub Pages
-deploy/apps-script/       Code.gs + index.html untuk Google Apps Script
+Ganti `emailadmin@gmail.com` dengan email admin dari langkah a. (Contoh lengkap ada di `database.rules.json`.)
+Klik **Publish**.
+
+**c. Tempel config**
+Project settings (⚙️) → *General* → *Your apps* → pilih/daftarkan **Web app** → salin objek `firebaseConfig`,
+lalu tempel ke `js/config.js`:
+
+```js
+export const FIREBASE_CONFIG = {
+  apiKey: "...",
+  authDomain: "....firebaseapp.com",
+  databaseURL: "https://....firebasedatabase.app",
+  projectId: "...",
+  storageBucket: "...",
+  messagingSenderId: "...",
+  appId: "..."
+};
 ```
+`databaseURL` wajib ada (lihat di halaman Realtime Database kalau tidak muncul di config).
+
+> Kalau sudah sempat mengisi CV di Mode Demo: di admin demo buka tab **Cadangan → Export**, lalu setelah Firebase aktif login lagi dan **Import** file tersebut → **Simpan**.
+
+---
+
+## 3. Deploy ke Vercel
+
+1. Upload folder `rumah-cv` ke repo GitHub baru (mis. `riskidwisaputra78128/rumah-cv`).
+2. Vercel → **Add New Project** → import repo → Framework preset: **Other** → Build command kosong → **Deploy**.
+3. Tambahkan domain Vercel-nya ke *Authorized domains* Firebase (langkah 2a).
+
+Setiap kali kamu `git push`, Vercel otomatis update.
+
+---
+
+## Tentang foto & dokumen
+
+- Foto yang di-upload di admin otomatis **dikecilkan** (maks. 1200px JPEG) lalu disimpan di Realtime Database — tidak butuh Firebase Storage (yang sekarang wajib kartu kredit).
+- Untuk dokumen besar (CV PDF, sertifikat), paling hemat **tempel link Google Drive** (set akses "Siapa saja yang memiliki link"). Upload langsung dibatasi 3 MB.
+- Seluruh data CV diunduh setiap kali ada pengunjung, jadi usahakan total di bawah ±3 MB (lihat ukuran di tab **Cadangan**). Kalau fotonya banyak, pakai link gambar (mis. dari GitHub/ImgBB) supaya website tetap cepat dan kuota gratis aman.
+
+## Struktur file
+
+```
+index.html          halaman utama (rumah 3D)
+admin.html          halaman admin
+css/style.css       tampilan website
+css/admin.css       tampilan admin
+js/config.js        ⚙️ config Firebase & password demo
+js/defaults.js      isi CV contoh (dipakai kalau database masih kosong)
+js/scene-disney.js  tema 1 (Disney)
+js/scene.js         tema 2 (semi-realistis) + dasar tema 4 & 5
+js/pro.js           tema 3 (profesional) + css/pro.css
+js/scene-photo.js   tema 4 (foto asli) + assets/photo/
+js/scene-palembang.js tema 5 (Palembang)
+js/content.js       isi & fitur tiap bingkai (dipakai semua tema)
+js/cropper.js       editor foto di Admin
+js/main.js          pemuat tema, intro, menu, panel CV
+js/store.js         simpan/muat data (Firebase atau localStorage)
+js/admin.js         editor admin
+vendor/three/       Three.js r170 (lokal, tanpa CDN)
+database.rules.json contoh Rules Firebase
+vercel.json         cache & noindex untuk admin
+```
+
+## Performa
+
+- Kualitas otomatis lebih ringan di HP (rumput lebih sedikit, bayangan lebih kecil).
+- Tambahkan `?q=low` di URL (mis. `rumah-risky.vercel.app/?q=low`) untuk mode super ringan di perangkat lemah.
+- Aset: `assets/hdr/spruit_sunrise_1k.hdr` (Poly Haven, CC0) dan tekstur kayu/bata/rumput dari contoh resmi three.js. Total ±3 MB.
+
+## Kustomisasi cepat
+
+| Mau ubah | Di mana |
+|---|---|
+| Langit / suasana | ganti file `.hdr` di `assets/hdr/` (mis. dari polyhaven.com, 1k) dan namanya di `init()` `js/scene.js` |
+| Warna plester / genteng | `js/scene.js` → `buildHouse()` (`plasterSet(...)`, `tileSet(...)`) |
+| Kecerahan | `toneMappingExposure` di `showWorld()` |
+| Posisi bingkai di dinding | `js/scene.js` → `frameSlots()` |
+| Kekuatan efek glow | `js/scene.js` → `UnrealBloomPass(..., 0.35, 0.4, 1.25)` |
+| Font | `index.html` (Google Fonts Fredoka + Nunito) |

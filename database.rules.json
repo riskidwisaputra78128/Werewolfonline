@@ -1,0 +1,10 @@
+{
+  "rules": {
+    "rumahcv": {
+      "data": {
+        ".read": true,
+        ".write": "auth != null && auth.token.email == 'GANTI_DENGAN_EMAIL_ADMIN@gmail.com'"
+      }
+    }
+  }
+}

@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin · Rumah CV</title>
+  <meta name="robots" content="noindex" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔑</text></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/admin.css" />
+</head>
+<body>
+  <!-- LOGIN -->
+  <main id="loginView" class="login hidden">
+    <form id="loginForm" class="login-card">
+      <div class="login-icon">🔑</div>
+      <h1>Pintu Admin</h1>
+      <p class="muted">Hanya pemilik rumah yang boleh mengubah isi CV.</p>
+      <label id="emailRow">Email<input type="email" id="lgEmail" autocomplete="username" /></label>
+      <label>Password<input type="password" id="lgPass" autocomplete="current-password" required /></label>
+      <button class="btn primary" type="submit">Masuk</button>
+      <p id="lgErr" class="err"></p>
+      <p id="demoNote" class="note hidden">🧪 <b>Mode Demo</b> — data disimpan di browser ini saja. Password default ada di <code>js/config.js</code>. Hubungkan Firebase agar online (lihat README).</p>
+      <a href="index.html" class="back">← Kembali ke rumah</a>
+    </form>
+  </main>
+
+  <!-- EDITOR -->
+  <div id="appView" class="hidden">
+    <header class="topbar">
+      <div class="tb-left"><span class="logo">🏡</span><div><b>Admin Rumah CV</b><small id="whoami"></small></div></div>
+      <div class="tb-right">
+        <span id="saveState" class="state">Tersimpan</span>
+        <a class="btn ghost" href="index.html" target="_blank">👁️ Lihat website</a>
+        <button id="btnSave" class="btn primary">💾 Simpan</button>
+        <button id="btnLogout" class="btn ghost">Keluar</button>
+      </div>
+    </header>
+    <nav class="tabs">
+      <button data-tab="profile" class="on">👤 Profil</button>
+      <button data-tab="sections">🖼️ Bingkai CV</button>
+      <button data-tab="links">🔗 Link &amp; Dokumen</button>
+      <button data-tab="theme">🎨 Tampilan</button>
+      <button data-tab="backup">🗄️ Cadangan</button>
+    </nav>
+    <main id="editor" class="editor"></main>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+  <script type="module" src="js/admin.js"></script>
+</body>
+</html>
